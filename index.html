@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Fighting HTML</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="game-container">
+        <h1>Simple Fighting Game</h1>
+
+        <div class="hud">
+            <div class="player-info">
+                <p>Player (<span id="playerClassName">Striker</span>)</p>
+                <div class="health-box">
+                    <div id="playerHealth" class="health-fill player-health"></div>
+                </div>
+                <div class="ex-box">
+                    <div id="playerEx" class="ex-fill player-ex"></div>
+                </div>
+            </div>
+
+            <div class="timer-box">
+                <p id="statusText">FIGHT!</p>
+            </div>
+
+            <div class="player-info">
+                <p>Enemy (<span id="enemyClassName">Striker</span>)</p>
+                <div class="health-box">
+                    <div id="enemyHealth" class="health-fill enemy-health"></div>
+                </div>
+                <div class="ex-box">
+                    <div id="enemyEx" class="ex-fill enemy-ex"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="arena" class="arena">
+            <canvas id="gameCanvas"></canvas>
+
+            <!-- Countdown Overlay -->
+            <div id="countdownOverlay" class="countdown-overlay hidden">
+                <div id="countdownText" class="countdown-text">3</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <p><b>P1:</b> A/D gerak | W lompat | S tangkis | J serang | K hadouken &nbsp;&nbsp;|&nbsp;&nbsp; <b>P2:</b>
+                ◀/▶ gerak | ▲ lompat | ▼ tangkis | 0 serang | 1 hadouken</p>
+        </div>
+    </div>
+
+    <!-- Main Menu Overlay -->
+    <div id="mainMenu" class="overlay-screen">
+        <div class="menu-content">
+            <h1 class="menu-title">NEON FIGHTER</h1>
+            <p class="menu-subtitle">Simple Fighting Game</p>
+            <div class="menu-buttons">
+                <button id="btnStart1P" class="btn btn-primary">1 Player (vs CPU)</button>
+                <button id="btnStart2P" class="btn btn-secondary">2 Players (Local)</button>
+                <button id="btnHowToPlay" class="btn btn-secondary">How to Play</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Character Selection Overlay -->
+    <div id="charSelectMenu" class="overlay-screen hidden">
+        <div class="menu-content select-content">
+            <h1 id="charSelectTitle" class="menu-title">SELECT CHARACTER</h1>
+            <p id="charSelectSubtitle" class="menu-subtitle">Pilih Kelas Pertarungan Anda</p>
+            <div class="char-cards">
+                <div class="char-card" data-class="striker" id="cardStriker">
+                    <div class="char-preview-box">
+                        <div class="char-glow-dot blue-glow"></div>
+                        <h3>STRIKER</h3>
+                    </div>
+                    <div class="char-stats">
+                        <div class="stat-line"><span>HP</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 70%; background-color: #3b82f6;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>SPEED</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 70%; background-color: #3b82f6;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>DAMAGE</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 60%; background-color: #3b82f6;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Saber</span></div>
+                    </div>
+                </div>
+                <div class="char-card" data-class="titan" id="cardTitan">
+                    <div class="char-preview-box">
+                        <div class="char-glow-dot green-glow"></div>
+                        <h3>TITAN</h3>
+                    </div>
+                    <div class="char-stats">
+                        <div class="stat-line"><span>HP</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 100%; background-color: #22c55e;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>SPEED</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 45%; background-color: #22c55e;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>DAMAGE</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 100%; background-color: #22c55e;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Greatsword</span></div>
+                    </div>
+                </div>
+                <div class="char-card" data-class="shadow" id="cardShadow">
+                    <div class="char-preview-box">
+                        <div class="char-glow-dot purple-glow"></div>
+                        <h3>SHADOW</h3>
+                    </div>
+                    <div class="char-stats">
+                        <div class="stat-line"><span>HP</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 55%; background-color: #a855f7;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>SPEED</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 100%; background-color: #a855f7;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>DAMAGE</span>
+                            <div class="stat-bar">
+                                <div class="stat-fill" style="width: 40%; background-color: #a855f7;"></div>
+                            </div>
+                        </div>
+                        <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Twin Daggers</span></div>
+                    </div>
+                </div>
+            </div>
+            <button id="btnBackToMenu" class="btn btn-danger" style="margin-top: 20px; max-width: 200px;">Back</button>
+        </div>
+    </div>
+
+    <!-- How to Play Modal -->
+    <div id="howToPlayModal" class="modal-overlay hidden">
+        <div class="modal-content modal-large">
+            <h2>How to Play</h2>
+            <div class="how-to-play-columns">
+                <div class="how-to-column">
+                    <h3>Player 1 (Kiri)</h3>
+                    <div class="controls-list">
+                        <div class="control-item"><span class="key">W</span> Lompat / Jump</div>
+                        <div class="control-item"><span class="key">A</span> Kiri / Move Left</div>
+                        <div class="control-item"><span class="key">S</span> Tangkis / Block</div>
+                        <div class="control-item"><span class="key">D</span> Kanan / Move Right</div>
+                        <div class="control-item"><span class="key">J</span> Serang Dekat / Attack</div>
+                        <div class="control-item"><span class="key">K</span> Hadouken (EX 30)</div>
+                    </div>
+                </div>
+                <div class="how-to-column">
+                    <h3>Player 2 (Kanan)</h3>
+                    <div class="controls-list">
+                        <div class="control-item"><span class="key">▲</span> Lompat / Jump</div>
+                        <div class="control-item"><span class="key">◀</span> Kiri / Move Left</div>
+                        <div class="control-item"><span class="key">▼</span> Tangkis / Block</div>
+                        <div class="control-item"><span class="key">▶</span> Kanan / Move Right</div>
+                        <div class="control-item"><span class="key">0</span> Serang Dekat / Attack</div>
+                        <div class="control-item"><span class="key">1</span> Hadouken (EX 30)</div>
+                    </div>
+                </div>
+            </div>
+            <div
+                style="margin-top: 15px; font-size: 13px; color: #9ca3af; border-top: 1px solid #374151; padding-top: 10px; text-align: center;">
+                <p><b>P</b> Pause Game &nbsp;|&nbsp; <b>R</b> Restart Game</p>
+            </div>
+            <button id="btnCloseModal" class="btn btn-danger" style="margin-top: 15px;">Close</button>
+        </div>
+    </div>
+
+    <!-- Pause Menu Overlay -->
+    <div id="pauseMenu" class="overlay-screen hidden">
+        <div class="menu-content">
+            <h1 class="menu-title paused-title">GAME PAUSED</h1>
+            <div class="menu-buttons">
+                <button id="btnResume" class="btn btn-primary">Resume</button>
+                <button id="btnRestart" class="btn btn-secondary">Restart</button>
+                <button id="btnMainMenu" class="btn btn-danger">Main Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div id="gameOverMenu" class="overlay-screen hidden">
+        <div class="menu-content">
+            <h1 id="gameOverTitle" class="menu-title">GAME OVER</h1>
+            <p id="gameOverResult" class="menu-subtitle">Player Wins!</p>
+            <div class="menu-buttons">
+                <button id="btnGameOverRestart" class="btn btn-primary">Play Again</button>
+                <button id="btnGameOverMainMenu" class="btn btn-secondary">Main Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
