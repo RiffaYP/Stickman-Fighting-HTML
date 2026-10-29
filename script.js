@@ -481,6 +481,7 @@ document.addEventListener("keydown", function (event) {
     if (inMainMenu) return;
 
     const key = event.key.toLowerCase();
+    const code = event.code;
 
     if (key === "p") {
         if (gameRunning && !isCountingDown) {
@@ -491,10 +492,18 @@ document.addEventListener("keydown", function (event) {
 
     if (isPaused || isCountingDown) return;
 
-    if (key === "0" || event.code === "Numpad0") {
+    if (key === "0" || code === "Numpad0") {
         keys["0"] = true;
-    } else if (key === "1" || event.code === "Numpad1") {
+    } else if (key === "1" || code === "Numpad1") {
         keys["1"] = true;
+    } else if (code === "ArrowLeft") {
+        keys["arrowleft"] = true;
+    } else if (code === "ArrowRight") {
+        keys["arrowright"] = true;
+    } else if (code === "ArrowUp") {
+        keys["arrowup"] = true;
+    } else if (code === "ArrowDown") {
+        keys["arrowdown"] = true;
     } else {
         keys[key] = true;
     }
@@ -507,11 +516,20 @@ document.addEventListener("keydown", function (event) {
 document.addEventListener("keyup", function (event) {
     if (inMainMenu || isPaused || isCountingDown) return;
     const key = event.key.toLowerCase();
+    const code = event.code;
 
-    if (key === "0" || event.code === "Numpad0") {
+    if (key === "0" || code === "Numpad0") {
         keys["0"] = false;
-    } else if (key === "1" || event.code === "Numpad1") {
+    } else if (key === "1" || code === "Numpad1") {
         keys["1"] = false;
+    } else if (code === "ArrowLeft") {
+        keys["arrowleft"] = false;
+    } else if (code === "ArrowRight") {
+        keys["arrowright"] = false;
+    } else if (code === "ArrowUp") {
+        keys["arrowup"] = false;
+    } else if (code === "ArrowDown") {
+        keys["arrowdown"] = false;
     } else {
         keys[key] = false;
     }
