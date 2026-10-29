@@ -41,7 +41,7 @@ const btnGameOverMainMenu = document.getElementById("btnGameOverMainMenu");
 const keys = {};
 
 const groundHeight = 45;
-const gravity = 0.8;
+const gravity = 0.65;
 
 // Game states
 let gameRunning = false;
@@ -192,7 +192,7 @@ const CHARACTER_CLASSES = {
         name: "Striker",
         maxHp: 100,
         speed: 5,
-        jumpPower: 15,
+        jumpPower: 13,
         damage: 10,
         color: "#3b82f6",
         lightColor: "#60a5fa",
@@ -206,7 +206,7 @@ const CHARACTER_CLASSES = {
         name: "Titan",
         maxHp: 130,
         speed: 3.5,
-        jumpPower: 13,
+        jumpPower: 11,
         damage: 16,
         color: "#22c55e",
         lightColor: "#86efac",
@@ -220,7 +220,7 @@ const CHARACTER_CLASSES = {
         name: "Shadow",
         maxHp: 85,
         speed: 6.8,
-        jumpPower: 17,
+        jumpPower: 15,
         damage: 6.5,
         color: "#a855f7",
         lightColor: "#d8b4fe",
@@ -700,7 +700,7 @@ function updateEnemyPlayerMovement() {
         enemy.x += enemy.velocityX;
         enemy.y += enemy.velocityY;
         enemy.velocityY -= gravity;
-        if (enemy.y <= 0) { enemy.y = 0; enemy.velocityY = 0; enemy.isJumping = false; }
+        if (enemy.y <= 0) { enemy.y = 0; enemy.velocityY = 0; if (enemy.isJumping) { enemy.isJumping = false; spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color); } }
         limitPosition(enemy);
         return;
     }
@@ -792,7 +792,7 @@ function updateEnemyAI() {
     const distance = getDistance(player, enemy);
 
     // AI Blocking Reaction (React to player attacking)
-    // Diturunkan peluangnya dari 0.08 ke 0.045 agar AI tidak terlalu dewa menangkis
+    // Diturunkan peluangnya agar AI lebih mudah
     if (enemy.blockingTimer > 0) {
         enemy.blockingTimer--;
         enemy.isBlocking = true;
@@ -800,9 +800,9 @@ function updateEnemyAI() {
     } else {
         enemy.isBlocking = false;
 
-        if (player.isAttacking && distance < 130 && Math.random() < 0.045 && !enemy.attackCooldown) {
+        if (player.isAttacking && distance < 130 && Math.random() < 0.015 && !enemy.attackCooldown) {
             enemy.isBlocking = true;
-            enemy.blockingTimer = 18; // menangkis selama 18 frame
+            enemy.blockingTimer = 12; // menangkis lebih singkat
             return;
         }
     }
@@ -832,24 +832,24 @@ function updateEnemyAI() {
                     enemy.aiState = "chase";
                 }
             } else {
-                // Siap menyerang: 55% serang/chase, 25% tangkis bertahan, 20% diam
-                if (rand < 0.55) {
+                // Siap menyerang: 35% serang/chase, 15% tangkis, 50% idle (banyak diam)
+                if (rand < 0.35) {
                     enemy.aiState = "chase";
-                } else if (rand < 0.80) {
+                } else if (rand < 0.50) {
                     enemy.aiState = "defend";
                 } else {
                     enemy.aiState = "idle";
-}
-    }
-    ctx.restore();
-}
+                }
+            }
+            enemy.aiStateTimer = 30 + Math.random() * 40; // 0.5s - 1.1s (lebih lama)
+        }
     } else {
         enemy.aiStateTimer--;
     }
 
     // Eksekusi State
     if (enemy.aiState === "shoot") {
-        if (enemy.ex >= 30) {
+        if (enemy.ex >= 30 && Math.random() < 0.8) {
             enemyShoot();
         } else {
             enemy.aiState = "chase"; // ganti state jika EX tidak cukup
@@ -868,14 +868,15 @@ function updateEnemyAI() {
     }
 
     if (enemy.aiState === "chase") {
-        if (distance > 95) {
+        if (distance > 110) {
             enemy.isMoving = true;
             enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.22;
 
-            if (Math.random() < 0.05 && !enemy.isJumping) {
+            if (Math.random() < 0.03 && !enemy.isJumping) {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
             }
-        } else {
+        } else if (Math.random() < 0.7) {
+            // 70% chance to attack, 30% chance to hesitate
             enemyAttack();
         }
     } else if (enemy.aiState === "retreat") {
