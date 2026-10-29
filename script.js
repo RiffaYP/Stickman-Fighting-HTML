@@ -9,6 +9,7 @@ const enemyExElement = document.getElementById("enemyEx");
 const playerClassNameElement = document.getElementById("playerClassName");
 const enemyClassNameElement = document.getElementById("enemyClassName");
 const statusText = document.getElementById("statusText");
+const hitFlashElement = document.getElementById("hitFlash");
 
 // DOM Menu & Modal elements
 const mainMenu = document.getElementById("mainMenu");
@@ -58,6 +59,11 @@ let arenaHeight = 450;
 // Dynamic arrays for projectiles & particles
 let projectiles = [];
 let particles = [];
+let hitStopFrames = 0;
+let screenShake = 0;
+let roundOver = false;
+let roundTimer = 99;
+let roundTimerInterval = null;
 
 // Audio Synthesizer (Web Audio API)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -172,6 +178,14 @@ function playSound(type) {
     }
 }
 
+function triggerHitFlash() {
+    if (hitFlashElement) {
+        hitFlashElement.classList.remove("active");
+        hitFlashElement.offsetWidth;
+        hitFlashElement.classList.add("active");
+    }
+}
+
 // Character classes specifications
 const CHARACTER_CLASSES = {
     striker: {
@@ -227,6 +241,7 @@ const player = {
     width: 70,
     height: 130,
     speed: 5,
+    velocityX: 0,
     velocityY: 0,
     jumpPower: 15,
     hp: 100,
@@ -334,12 +349,24 @@ function spawnSparks(x, y, color) {
 }
 
 function spawnDust(x, y) {
-    for (let i = 0; i < 6; i++) {
-        const vx = (Math.random() - 0.5) * 2.5;
-        const vy = -Math.random() * 1.5;
-        const size = 2 + Math.random() * 3.5;
-        const life = 10 + Math.random() * 15;
-        particles.push(new Particle(x, y, "rgba(255, 255, 255, 0.35)", vx, vy, size, life));
+    for (let i = 0; i < 8; i++) {
+        const vx = (Math.random() - 0.5) * 3.5;
+        const vy = -Math.random() * 2.5;
+        const size = 2.5 + Math.random() * 4;
+        const life = 12 + Math.random() * 18;
+        particles.push(new Particle(x, y, "rgba(255, 255, 255, 0.4)", vx, vy, size, life));
+    }
+}
+
+function spawnImpactDust(x, y, color) {
+    for (let i = 0; i < 12; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 5;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed - 2;
+        const size = 2 + Math.random() * 4;
+        const life = 15 + Math.random() * 20;
+        particles.push(new Particle(x, y, color || "rgba(255, 255, 255, 0.5)", vx, vy, size, life));
     }
 }
 
@@ -378,6 +405,36 @@ function togglePause() {
     }
 }
 
+function playCountdownSound() {
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(440, now + 0.15);
+    gainNode.gain.setValueAtTime(0.2, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.start(now);
+    osc.stop(now + 0.15);
+}
+
+function playCountdownFinalSound() {
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(660, now);
+    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.1);
+    gainNode.gain.setValueAtTime(0.25, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.start(now);
+    osc.stop(now + 0.2);
+}
+
 // Countdown before game starts
 function startCountdown(callback) {
     isCountingDown = true;
@@ -391,6 +448,7 @@ function startCountdown(callback) {
         if (count > 0) {
             countdownText.textContent = count;
             statusText.textContent = count;
+            playCountdownSound();
 
             countdownText.style.animation = 'none';
             countdownText.offsetHeight; // trigger reflow
@@ -401,6 +459,7 @@ function startCountdown(callback) {
         } else {
             countdownText.textContent = "MULAI!";
             statusText.textContent = "FIGHT!";
+            playCountdownFinalSound();
 
             countdownText.style.animation = 'none';
             countdownText.offsetHeight; // trigger reflow
@@ -549,6 +608,18 @@ function selectChar(className) {
 
 function updatePlayerMovement() {
     if (!gameRunning) return;
+    if (player.isHitstun > 0) {
+        player.isHitstun--;
+        player.isBlocking = false;
+        player.isMoving = false;
+        player.velocityX *= 0.94;
+        player.x += player.velocityX;
+        player.y += player.velocityY;
+        player.velocityY -= gravity;
+        if (player.y <= 0) { player.y = 0; player.velocityY = 0; if (player.isJumping) { player.isJumping = false; spawnImpactDust(player.x + player.width / 2, arenaHeight - groundHeight, player.color); } }
+        limitPosition(player);
+        return;
+    }
 
     player.isMoving = false;
 
@@ -562,10 +633,9 @@ function updatePlayerMovement() {
         player.isBlocking = false;
 
         if (keys["a"]) {
-            player.x -= player.speed;
+            player.velocityX -= player.speed * 0.22;
             player.facing = -1;
             player.isMoving = true;
-            player.animTime += 0.15;
 
             if (!player.isJumping && Math.random() < 0.2) {
                 spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
@@ -573,10 +643,9 @@ function updatePlayerMovement() {
         }
 
         if (keys["d"]) {
-            player.x += player.speed;
+            player.velocityX += player.speed * 0.22;
             player.facing = 1;
             player.isMoving = true;
-            player.animTime += 0.15;
 
             if (!player.isJumping && Math.random() < 0.2) {
                 spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
@@ -591,6 +660,11 @@ function updatePlayerMovement() {
         }
     }
 
+    if (player.isBlocking) player.velocityX = 0;
+    player.velocityX *= player.isMoving ? 0.82 : 0.68;
+    player.velocityX = Math.max(-player.speed, Math.min(player.speed, player.velocityX));
+    player.x += player.velocityX;
+    player.animTime += player.isMoving ? Math.abs(player.velocityX) * 0.045 : 0.035;
     player.y += player.velocityY;
     player.velocityY -= gravity;
 
@@ -599,7 +673,7 @@ function updatePlayerMovement() {
         player.velocityY = 0;
         if (player.isJumping) {
             player.isJumping = false;
-            spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
+            spawnImpactDust(player.x + player.width / 2, arenaHeight - groundHeight, player.color);
         }
     }
 
@@ -618,6 +692,18 @@ function updatePlayerMovement() {
 
 function updateEnemyPlayerMovement() {
     if (!gameRunning) return;
+    if (enemy.isHitstun > 0) {
+        enemy.isHitstun--;
+        enemy.isBlocking = false;
+        enemy.isMoving = false;
+        enemy.velocityX *= 0.94;
+        enemy.x += enemy.velocityX;
+        enemy.y += enemy.velocityY;
+        enemy.velocityY -= gravity;
+        if (enemy.y <= 0) { enemy.y = 0; enemy.velocityY = 0; enemy.isJumping = false; }
+        limitPosition(enemy);
+        return;
+    }
 
     enemy.isMoving = false;
 
@@ -631,10 +717,9 @@ function updateEnemyPlayerMovement() {
         enemy.isBlocking = false;
 
         if (keys["arrowleft"]) {
-            enemy.x -= enemy.speed;
+            enemy.velocityX -= enemy.speed * 0.22;
             enemy.facing = -1;
             enemy.isMoving = true;
-            enemy.animTime += 0.15;
 
             if (!enemy.isJumping && Math.random() < 0.2) {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
@@ -642,10 +727,9 @@ function updateEnemyPlayerMovement() {
         }
 
         if (keys["arrowright"]) {
-            enemy.x += enemy.speed;
+            enemy.velocityX += enemy.speed * 0.22;
             enemy.facing = 1;
             enemy.isMoving = true;
-            enemy.animTime += 0.15;
 
             if (!enemy.isJumping && Math.random() < 0.2) {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
@@ -668,7 +752,7 @@ function updateEnemyPlayerMovement() {
         enemy.velocityY = 0;
         if (enemy.isJumping) {
             enemy.isJumping = false;
-            spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
+            spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
         }
     }
 
@@ -687,6 +771,18 @@ function updateEnemyPlayerMovement() {
 
 function updateEnemyAI() {
     if (!gameRunning) return;
+    if (enemy.isHitstun > 0) {
+        enemy.isHitstun--;
+        enemy.isBlocking = false;
+        enemy.isMoving = false;
+        enemy.velocityX *= 0.94;
+        enemy.x += enemy.velocityX;
+        enemy.y += enemy.velocityY;
+        enemy.velocityY -= gravity;
+        if (enemy.y <= 0) { enemy.y = 0; enemy.velocityY = 0; if (enemy.isJumping) { enemy.isJumping = false; spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color); } }
+        limitPosition(enemy);
+        return;
+    }
 
     enemy.isMoving = false;
 
@@ -743,10 +839,10 @@ function updateEnemyAI() {
                     enemy.aiState = "defend";
                 } else {
                     enemy.aiState = "idle";
-                }
-            }
-            enemy.aiStateTimer = 20 + Math.random() * 20; // 0.3s - 0.7s
-        }
+}
+    }
+    ctx.restore();
+}
     } else {
         enemy.aiStateTimer--;
     }
@@ -774,13 +870,7 @@ function updateEnemyAI() {
     if (enemy.aiState === "chase") {
         if (distance > 95) {
             enemy.isMoving = true;
-            enemy.animTime += 0.15;
-
-            if (player.x < enemy.x) {
-                enemy.x -= enemy.speed;
-            } else {
-                enemy.x += enemy.speed;
-            }
+            enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.22;
 
             if (Math.random() < 0.05 && !enemy.isJumping) {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
@@ -795,12 +885,7 @@ function updateEnemyAI() {
 
         // Mundur dengan kecepatan lebih lambat (75% speed kelas)
         const retreatSpeed = enemy.speed * 0.75;
-
-        if (player.x < enemy.x) {
-            enemy.x += retreatSpeed; // menjauh ke kanan
-        } else {
-            enemy.x -= retreatSpeed; // menjauh ke kiri
-        }
+        enemy.velocityX += (player.x < enemy.x ? 1 : -1) * retreatSpeed * 0.22;
 
         if (Math.random() < 0.05 && !enemy.isJumping) {
             spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
@@ -811,12 +896,20 @@ function updateEnemyAI() {
     }
 
     // AI physics (in case of gravity/pushback)
+    if (enemy.isBlocking) enemy.velocityX = 0;
+    enemy.velocityX *= enemy.isMoving ? 0.82 : 0.68;
+    enemy.velocityX = Math.max(-enemy.speed, Math.min(enemy.speed, enemy.velocityX));
+    enemy.x += enemy.velocityX;
+    enemy.animTime += enemy.isMoving ? Math.abs(enemy.velocityX) * 0.045 : 0.035;
     enemy.y += enemy.velocityY;
     enemy.velocityY -= gravity;
     if (enemy.y <= 0) {
         enemy.y = 0;
         enemy.velocityY = 0;
-        enemy.isJumping = false;
+        if (enemy.isJumping) {
+            enemy.isJumping = false;
+            spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
+        }
     }
 
     limitPosition(enemy);
@@ -855,11 +948,16 @@ function playerAttack() {
             const sparkX = enemy.x + (enemy.width / 2) - player.facing * 20;
             const sparkY = (arenaHeight - groundHeight) - enemy.y - enemy.height / 2;
             spawnSparks(sparkX, sparkY, "#facc15");
+            spawnImpactDust(sparkX, sparkY, "#facc15");
         } else {
             // Serangan telak
             enemy.hp -= player.damage;
             enemy.hp = Math.max(enemy.hp, 0);
             enemy.hitTimer = 10; // Flashing putih
+            enemy.isHitstun = 14;
+            enemy.velocityX += player.facing * 5;
+            hitStopFrames = 5;
+            screenShake = 7;
 
             // Serangan sukses menambah EX penyerang
             player.ex = Math.min(100, player.ex + 15);
@@ -870,11 +968,13 @@ function playerAttack() {
             enemy.x += player.facing * 25;
 
             playSound('hit');
+            triggerHitFlash();
 
             // Efek darah/percikan merah
             const sparkX = enemy.x + enemy.width / 2;
             const sparkY = (arenaHeight - groundHeight) - enemy.y - enemy.height / 2;
             spawnSparks(sparkX, sparkY, enemy.lightColor);
+            spawnImpactDust(sparkX, sparkY, enemy.lightColor);
         }
 
         updateHealthBars();
@@ -920,11 +1020,16 @@ function enemyAttack() {
             const sparkX = player.x + (player.width / 2) - enemy.facing * 20;
             const sparkY = (arenaHeight - groundHeight) - player.y - player.height / 2;
             spawnSparks(sparkX, sparkY, "#facc15");
+            spawnImpactDust(sparkX, sparkY, "#facc15");
         } else {
             // Serangan telak
             player.hp -= enemy.damage;
             player.hp = Math.max(player.hp, 0);
             player.hitTimer = 10;
+            player.isHitstun = 14;
+            player.velocityX += enemy.facing * 5;
+            hitStopFrames = 5;
+            screenShake = 7;
 
             enemy.ex = Math.min(100, enemy.ex + 15);
             player.ex = Math.min(100, player.ex + 6);
@@ -932,10 +1037,12 @@ function enemyAttack() {
             player.x += enemy.facing * 18;
 
             playSound('hit');
+            triggerHitFlash();
 
             const sparkX = player.x + player.width / 2;
             const sparkY = (arenaHeight - groundHeight) - player.y - player.height / 2;
             spawnSparks(sparkX, sparkY, player.lightColor);
+            spawnImpactDust(sparkX, sparkY, player.lightColor);
         }
 
         updateHealthBars();
@@ -1060,6 +1167,7 @@ function showGameOver(message) {
         gameOverTitle.style.webkitBackgroundClip = "text";
         gameOverTitle.style.webkitTextFillColor = "transparent";
         playSound('win');
+        spawnVictoryBurst();
     } else {
         gameOverTitle.textContent = "DEFEAT";
         gameOverTitle.style.background = "linear-gradient(90deg, #ef4444, #dc2626, #b91c1c)";
@@ -1072,17 +1180,43 @@ function showGameOver(message) {
     }, 1000);
 }
 
+function spawnVictoryBurst() {
+    const centerX = arenaWidth / 2;
+    const groundY = arenaHeight - groundHeight;
+    for (let i = 0; i < 60; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 3 + Math.random() * 8;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed - 4;
+        const size = 3 + Math.random() * 5;
+        const life = 40 + Math.random() * 40;
+        const color = Math.random() < 0.5 ? "#facc15" : "#60a5fa";
+        particles.push(new Particle(centerX, groundY, color, vx, vy, size, life));
+    }
+}
+
 function checkWinner() {
     if (enemy.hp <= 0) {
         gameRunning = false;
+        roundOver = true;
+        if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
         const msg = gameMode === "1P" ? "PLAYER WIN!" : "PLAYER 1 WIN!";
         statusText.textContent = msg;
         showGameOver(msg);
     } else if (player.hp <= 0) {
         gameRunning = false;
+        roundOver = true;
+        if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
         const msg = gameMode === "1P" ? "ENEMY WIN!" : "PLAYER 2 WIN!";
         statusText.textContent = msg;
         showGameOver(msg);
+    } else if (roundTimer <= 0) {
+        gameRunning = false;
+        roundOver = true;
+        if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
+        const msg = player.hp > enemy.hp ? (gameMode === "1P" ? "PLAYER WIN!" : "PLAYER 1 WIN!") : (gameMode === "1P" ? "ENEMY WIN!" : "PLAYER 2 WIN!");
+        statusText.textContent = msg + " (TIME UP!)";
+        showGameOver(msg + " (TIME UP!)");
     }
 }
 
@@ -1097,14 +1231,15 @@ function updateSwordTrail(char) {
 
     let angle = 0.3;
     if (char.isAttacking) {
-        const attackProgress = (Date.now() - char.attackStartTime) / 180;
-        angle = -0.8 + attackProgress * 2.5;
+        const attackProgress = Math.max(0, Math.min(1, (Date.now() - char.attackStartTime) / 180));
+        const easedAttack = attackProgress * attackProgress * (3 - 2 * attackProgress);
+        angle = -0.8 + easedAttack * 2.5;
     } else if (char.isBlocking) {
         angle = -1.2;
+    } else if (char.isHitstun > 0) {
+        angle = 0.8;
     } else {
-        if (char.isMoving) {
-            angle = 0.3 + Math.sin(char.animTime) * 0.2;
-        }
+        angle = 0.3 + Math.sin(char.animTime) * (char.isMoving ? 0.2 : 0.06);
     }
 
     if (char.isAttacking) {
@@ -1259,19 +1394,26 @@ function updateProjectiles() {
 
                 // Yellow block sparks
                 spawnSparks(p.x, p.y, "#facc15");
+                spawnImpactDust(p.x, p.y, "#facc15");
             } else {
                 // Hit!
                 target.hp -= 12; // Projectile damage
                 target.hp = Math.max(target.hp, 0);
                 target.hitTimer = 10;
+                target.isHitstun = 12;
+                target.velocityX += p.owner.facing * 4;
+                hitStopFrames = 4;
+                screenShake = 5;
 
                 p.owner.ex = Math.min(100, p.owner.ex + 15);
                 target.ex = Math.min(100, target.ex + 6);
 
                 target.x += p.owner.facing * 20;
                 playSound('hit');
+                triggerHitFlash();
 
                 spawnSparks(p.x, p.y, target.lightColor);
+                spawnImpactDust(p.x, p.y, target.lightColor);
             }
 
             updateHealthBars();
@@ -1313,6 +1455,9 @@ function drawFighter(char, isPlayer) {
     const primaryColor = char.color;
     const lightColor = char.lightColor;
     const shadowColor = char.shadowColor;
+    const idleBreath = Math.sin(char.animTime) * (char.isMoving || char.isAttacking ? 0.5 : 1.8);
+    const recoil = char.isHitstun > 0 ? 5 : 0;
+    ctx.translate(-char.facing * recoil, idleBreath);
 
     ctx.lineWidth = char.lineWidth;
     ctx.lineCap = "round";
@@ -1376,7 +1521,17 @@ function drawFighter(char, isPlayer) {
     let leftLegY = 0;
     let rightLegY = 0;
 
-    if (char.isJumping) {
+    if (char.isAttacking) {
+        leftLegX = -18;
+        rightLegX = 16;
+        leftLegY = -3;
+        rightLegY = 0;
+    } else if (char.isHitstun > 0) {
+        leftLegX = -19;
+        rightLegX = 18;
+        leftLegY = -4;
+        rightLegY = -2;
+    } else if (char.isJumping) {
         leftLegX = -8;
         rightLegX = 8;
         leftLegY = -12;
@@ -1480,9 +1635,10 @@ function drawFighter(char, isPlayer) {
     let armAngle = 0.3;
     if (char.isShooting) {
         armAngle = 0; // Extended straight forward
-    } else if (char.isAttacking) {
-        const attackProgress = (Date.now() - char.attackStartTime) / 180;
-        armAngle = -0.8 + attackProgress * 2.5;
+    } else     if (char.isAttacking) {
+        const attackProgress = Math.max(0, Math.min(1, (Date.now() - char.attackStartTime) / 180));
+        const easedAttack = attackProgress * attackProgress * (3 - 2 * attackProgress);
+        armAngle = -0.8 + easedAttack * 2.5;
     } else if (char.isBlocking) {
         armAngle = -1.2;
     } else if (char.isMoving) {
@@ -1556,6 +1712,12 @@ function drawFighter(char, isPlayer) {
 function render() {
     // 1. Clear Canvas
     ctx.clearRect(0, 0, arenaWidth, arenaHeight);
+    ctx.save();
+    if (screenShake > 0) {
+        ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+        screenShake *= 0.78;
+        if (screenShake < 0.4) screenShake = 0;
+    }
 
     // 2. Draw Background & Ground
     drawBackground();
@@ -1588,13 +1750,17 @@ function render() {
 
 function gameLoop() {
     if (!inMainMenu && !isPaused && !isCountingDown) {
-        updatePlayerMovement();
-        if (gameMode === "1P") {
-            updateEnemyAI();
+        if (hitStopFrames > 0) {
+            hitStopFrames--;
         } else {
-            updateEnemyPlayerMovement();
+            updatePlayerMovement();
+            if (gameMode === "1P") {
+                updateEnemyAI();
+            } else {
+                updateEnemyPlayerMovement();
+            }
+            updateProjectiles();
         }
-        updateProjectiles();
     }
 
     // Update Hit Flashing Timer
@@ -1620,6 +1786,7 @@ function restartGame() {
 
     player.x = 120;
     player.y = 0;
+    player.velocityX = 0;
     player.velocityY = 0;
     player.hp = player.maxHp;
     player.ex = 0;
@@ -1630,6 +1797,7 @@ function restartGame() {
     player.isBlocking = false;
     player.isShooting = false;
     player.hitTimer = 0;
+    player.isHitstun = 0;
     player.animTime = 0;
     player.swordTrail = [];
     player.isMoving = false;
@@ -1641,6 +1809,7 @@ function restartGame() {
 
     enemy.x = arenaWidth - 160;
     enemy.y = 0;
+    enemy.velocityX = 0;
     enemy.velocityY = 0;
     enemy.hp = enemy.maxHp;
     enemy.ex = 0;
@@ -1651,6 +1820,7 @@ function restartGame() {
     enemy.isBlocking = false;
     enemy.isShooting = false;
     enemy.hitTimer = 0;
+    enemy.isHitstun = 0;
     enemy.animTime = 0;
     enemy.blockingTimer = 0;
     enemy.swordTrail = [];
@@ -1660,6 +1830,17 @@ function restartGame() {
 
     projectiles = [];
     particles = [];
+    hitStopFrames = 0;
+    screenShake = 0;
+    roundOver = false;
+    roundTimer = 99;
+    if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
+    roundTimerInterval = setInterval(() => {
+        if (gameRunning && !roundOver && roundTimer > 0) {
+            roundTimer--;
+            statusText.textContent = `${roundTimer}`;
+        }
+    }, 1000);
 
     gameRunning = true;
 
