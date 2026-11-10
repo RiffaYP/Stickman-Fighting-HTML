@@ -296,6 +296,296 @@ const STAGES = {
     }
 };
 
+const SPRITE_ANIMATIONS = {
+    idle: { frames: 4, frameRate: 8 },
+    run: { frames: 6, frameRate: 12 },
+    jump: { frames: 3, frameRate: 10 },
+    attack: { frames: 4, frameRate: 15 },
+    hit: { frames: 2, frameRate: 20 },
+    block: { frames: 2, frameRate: 8 },
+    shoot: { frames: 3, frameRate: 12 },
+    death: { frames: 4, frameRate: 6 }
+};
+
+function createProceduralSpriteSheet(char) {
+    // Creates procedural animated sprites as offscreen canvases
+    const sheet = {};
+    const w = char.width;
+    const h = char.height;
+    const primaryColor = char.color;
+    const lightColor = char.lightColor;
+    const shadowColor = char.shadowColor;
+    const weaponType = char.weaponType;
+
+    // Create a canvas for each animation state
+    Object.keys(SPRITE_ANIMATIONS).forEach(state => {
+        const anim = SPRITE_ANIMATIONS[state];
+        const canvas = document.createElement('canvas');
+        canvas.width = w * anim.frames;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+
+        for (let f = 0; f < anim.frames; f++) {
+            ctx.save();
+            ctx.translate(f * w + w / 2, h);
+
+            const progress = f / (anim.frames - 1);
+            drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColor, shadowColor, weaponType, char.facing);
+
+            ctx.restore();
+        }
+
+        sheet[state] = { canvas, frames: anim.frames, frameRate: anim.frameRate };
+    });
+
+    return sheet;
+}
+
+function drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColor, shadowColor, weaponType, facing) {
+    const headR = 15;
+    const neckY = -h + 2 * headR + 4;
+    const pelvisY = -45;
+    const shoulderY = neckY + 8;
+    const armLen = 25;
+
+    // Body tint based on state
+    let bodyColor = primaryColor;
+    if (state === 'hit') bodyColor = '#ffffff';
+    else if (state === 'block') bodyColor = lightColor;
+
+    ctx.strokeStyle = bodyColor;
+    ctx.shadowColor = shadowColor;
+    ctx.shadowBlur = 10;
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+
+    // Legs
+    let legSwing = 0;
+    if (state === 'run') legSwing = Math.sin(progress * Math.PI * 2) * 18;
+    else if (state === 'idle') legSwing = Math.sin(progress * Math.PI * 2) * 3;
+
+    // Left leg
+    ctx.beginPath();
+    ctx.moveTo(-3, pelvisY);
+    ctx.lineTo(-12 - legSwing, Math.max(0, -Math.abs(Math.cos(progress * Math.PI * 2)) * 8));
+    ctx.stroke();
+
+    // Right leg
+    ctx.beginPath();
+    ctx.moveTo(3, pelvisY);
+    ctx.lineTo(12 + legSwing, Math.max(0, -Math.abs(Math.sin(progress * Math.PI * 2)) * 8));
+    ctx.stroke();
+
+    // Spine
+    ctx.beginPath();
+    ctx.moveTo(0, neckY);
+    ctx.lineTo(0, pelvisY);
+    ctx.stroke();
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(0, -h + headR + 4, headR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Arms based on state
+    if (state === 'attack') {
+        const attackProg = progress;
+        const angle = -0.8 + attackProg * 2.5;
+        const handX = 4 + Math.cos(angle) * armLen;
+        const handY = shoulderY + Math.sin(angle) * armLen;
+
+        // Front arm
+        ctx.beginPath();
+        ctx.moveTo(4, shoulderY);
+        ctx.lineTo(handX, handY);
+        ctx.stroke();
+
+        // Weapon
+        const bladeLen = weaponType === 'greatsword' ? 60 : (weaponType === 'daggers' ? 32 : 45);
+        const hx = handX + Math.cos(angle) * 8;
+        const hy = handY + Math.sin(angle) * 8;
+        const bx = hx + Math.cos(angle) * bladeLen;
+        const by = hy + Math.sin(angle) * bladeLen;
+
+        ctx.save();
+        ctx.strokeStyle = lightColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 15;
+        ctx.lineWidth = weaponType === 'greatsword' ? 8 : (weaponType === 'daggers' ? 4 : 5);
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+        ctx.restore();
+    } else if (state === 'block') {
+        // Blocking pose - arms crossed
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(-15, -75);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(4, shoulderY);
+        ctx.lineTo(15, -75);
+        ctx.stroke();
+    } else if (state === 'shoot') {
+        // Shooting pose
+        ctx.beginPath();
+        ctx.moveTo(4, shoulderY);
+        ctx.lineTo(25, shoulderY);
+        ctx.stroke();
+        // Projectile
+        ctx.save();
+        ctx.fillStyle = lightColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(30, shoulderY, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    } else if (state === 'jump') {
+        // Jumping pose
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(-12, -70);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(4, shoulderY);
+        ctx.lineTo(12, -70);
+        ctx.stroke();
+    } else if (state === 'hit') {
+        // Hit reaction
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(-15, -60);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(4, shoulderY);
+        ctx.lineTo(15, -60);
+        ctx.stroke();
+    } else if (state === 'death') {
+        // Death pose - falling
+        const fallProg = progress;
+        ctx.save();
+        ctx.translate(0, fallProg * 30);
+        ctx.rotate(fallProg * 0.5);
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(-12 + fallProg * 10, -60 + fallProg * 20);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(4, shoulderY);
+        ctx.lineTo(12 - fallProg * 10, -60 + fallProg * 20);
+        ctx.stroke();
+        // Legs dangling
+        ctx.beginPath();
+        ctx.moveTo(-3, pelvisY);
+        ctx.lineTo(-10, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(3, pelvisY);
+        ctx.lineTo(10, 0);
+        ctx.stroke();
+        ctx.restore();
+    } else {
+        // Idle/Run default arms
+        const armSwing = state === 'run' ? Math.sin(progress * Math.PI * 2) * 0.3 : Math.sin(progress * Math.PI * 2) * 0.1;
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(-12 + armSwing * 6, -70);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(4, shoulderY);
+        ctx.lineTo(12 - armSwing * 6, -70);
+        ctx.stroke();
+    }
+
+    // Back weapon for Shadow
+    if (weaponType === 'daggers' && state !== 'attack') {
+        const angle = -1.8 + (state === 'run' ? Math.sin(progress * Math.PI * 2) * 0.3 : 0);
+        const armLen = 21;
+        const lhx = -4 + Math.cos(angle) * armLen;
+        const lhy = shoulderY + Math.sin(angle) * armLen;
+
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(lhx, lhy);
+        ctx.stroke();
+
+        // Dagger
+        const daggerLen = 22;
+        const hx = lhx + Math.cos(angle) * 5;
+        const hy = lhy + Math.sin(angle) * 5;
+        const bx = hx + Math.cos(angle) * daggerLen;
+        const by = hy + Math.sin(angle) * daggerLen;
+
+        ctx.save();
+        ctx.strokeStyle = lightColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+function updateSpriteAnimation(char) {
+    if (!char.useSprites) return;
+
+    // Determine current animation state
+    let newState = 'idle';
+    if (char.hp <= 0) newState = 'death';
+    else if (char.isHitstun > 0) newState = 'hit';
+    else if (char.isAttacking) newState = 'attack';
+    else if (char.isBlocking) newState = 'block';
+    else if (char.isShooting) newState = 'shoot';
+    else if (char.isJumping || char.y > 0) newState = 'jump';
+    else if (char.isMoving) newState = 'run';
+
+    if (char.spriteState !== newState) {
+        char.spriteState = newState;
+        char.spriteFrame = 0;
+        char.spriteTimer = 0;
+    }
+
+    const anim = char.spriteSheets[char.spriteState];
+    if (!anim) return;
+
+    char.spriteTimer++;
+    if (char.spriteTimer >= 60 / anim.frameRate) {
+        char.spriteTimer = 0;
+        char.spriteFrame = (char.spriteFrame + 1) % anim.frames;
+    }
+}
+
+function drawSprite(char, isPlayer) {
+    if (!char.useSprites || !char.spriteSheets[char.spriteState]) {
+        // Fallback to procedural drawing
+        drawFighter(char, isPlayer);
+        return;
+    }
+
+    const anim = char.spriteSheets[char.spriteState];
+    const frameW = char.width;
+    const frameH = char.height;
+    const sx = char.spriteFrame * frameW;
+    const sy = 0;
+
+    ctx.save();
+    ctx.translate(char.x + frameW / 2, (arenaHeight - groundHeight) - char.y);
+    ctx.scale(char.facing, 1);
+
+    // Hit flash effect
+    if (char.hitTimer > 0) {
+        ctx.filter = 'brightness(2)';
+    }
+
+    ctx.drawImage(anim.canvas, sx, sy, frameW, frameH, -frameW / 2, -frameH, frameW, frameH);
+    ctx.restore();
+}
+
 let selectedPlayerClass = "striker";
 
 // Default player & enemy stats
@@ -327,7 +617,13 @@ const player = {
     isMoving: false,
     className: "striker",
     knockbackResistance: 1.0,
-    juggleDecay: 0.92
+    juggleDecay: 0.92,
+    // Sprite animation
+    spriteState: "idle",
+    spriteFrame: 0,
+    spriteTimer: 0,
+    useSprites: false,
+    spriteSheets: {}
 };
 
 const enemy = {
@@ -359,7 +655,13 @@ const enemy = {
     aiState: "chase",
     aiStateTimer: 0,
     knockbackResistance: 1.0,
-    juggleDecay: 0.92
+    juggleDecay: 0.92,
+    // Sprite animation
+    spriteState: "idle",
+    spriteFrame: 0,
+    spriteTimer: 0,
+    useSprites: false,
+    spriteSheets: {}
 };
 
 function applyClassStats(char, className) {
@@ -367,6 +669,7 @@ function applyClassStats(char, className) {
     const info = CHARACTER_CLASSES[className];
     char.maxHp = info.maxHp;
     char.hp = info.maxHp;
+    char.targetHp = info.maxHp;
     char.speed = info.speed;
     char.jumpPower = info.jumpPower;
     char.damage = info.damage;
@@ -379,6 +682,13 @@ function applyClassStats(char, className) {
     char.projectileColor = info.projectileColor;
     char.knockbackResistance = info.knockbackResistance;
     char.juggleDecay = info.juggleDecay;
+
+    // Create procedural sprite sheets
+    char.spriteSheets = createProceduralSpriteSheet(char);
+    char.useSprites = true;
+    char.spriteState = 'idle';
+    char.spriteFrame = 0;
+    char.spriteTimer = 0;
 }
 
 class Particle {
@@ -866,6 +1176,9 @@ function updatePlayerMovement() {
 
     limitPosition(player);
 
+    // Update sprite animation
+    updateSpriteAnimation(player);
+
     // Serang & Hadouken Player 1
     if (keys["j"]) {
         playerAttack();
@@ -980,6 +1293,9 @@ function updateEnemyPlayerMovement() {
     }
 
     limitPosition(enemy);
+
+    // Update sprite animation
+    updateSpriteAnimation(enemy);
 
     // Serang & Hadouken Player 2
     if (keys["0"]) {
@@ -1151,6 +1467,9 @@ function updateEnemyAI() {
     }
 
     limitPosition(enemy);
+
+    // Update sprite animation
+    updateSpriteAnimation(enemy);
 }
 
 function playerAttack() {
@@ -2116,9 +2435,9 @@ function render() {
     // 5. Draw Projectiles
     drawProjectiles();
 
-    // 6. Draw Fighters
-    drawFighter(player, true);
-    drawFighter(enemy, false);
+    // 6. Draw Fighters (using sprite system)
+    drawSprite(player, true);
+    drawSprite(enemy, false);
 
     // 7. Update and Draw Particles
     for (let i = particles.length - 1; i >= 0; i--) {
