@@ -47,6 +47,33 @@
             <div id="countdownOverlay" class="countdown-overlay hidden">
                 <div id="countdownText" class="countdown-text">3</div>
             </div>
+
+            <!-- Mobile Touch Controls -->
+            <div id="touchControls" class="touch-controls hidden">
+                <!-- P1 Controls (Left Side) -->
+                <div class="touch-joystick" id="p1Joystick">
+                    <div class="joystick-base"></div>
+                    <div class="joystick-stick"></div>
+                </div>
+                <div class="touch-buttons p1-buttons">
+                    <button class="touch-btn" data-action="p1-attack" data-key="j"><span>👊</span></button>
+                    <button class="touch-btn" data-action="p1-special" data-key="k"><span>⚡</span></button>
+                    <button class="touch-btn" data-action="p1-block" data-key="s"><span>🛡</span></button>
+                    <button class="touch-btn" data-action="p1-jump" data-key="w"><span>⬆</span></button>
+                </div>
+
+                <!-- P2 Controls (Right Side) - for 2P mode -->
+                <div class="touch-joystick" id="p2Joystick">
+                    <div class="joystick-base"></div>
+                    <div class="joystick-stick"></div>
+                </div>
+                <div class="touch-buttons p2-buttons">
+                    <button class="touch-btn" data-action="p2-attack" data-key="0"><span>👊</span></button>
+                    <button class="touch-btn" data-action="p2-special" data-key="1"><span>⚡</span></button>
+                    <button class="touch-btn" data-action="p2-block" data-key="arrowdown"><span>🛡</span></button>
+                    <button class="touch-btn" data-action="p2-jump" data-key="arrowup"><span>⬆</span></button>
+                </div>
+            </div>
         </div>
 
         <div class="controls">

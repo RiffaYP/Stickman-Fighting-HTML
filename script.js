@@ -142,6 +142,130 @@ function getGamepadInput(playerIndex) {
     return curr;
 }
 
+// Touch Controls
+const touchState = {
+    p1: { joystick: { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 }, buttons: {} },
+    p2: { joystick: { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 }, buttons: {} }
+};
+
+function initTouchControls() {
+    const touchControls = document.getElementById('touchControls');
+    const isMobile = /Mobi|Android/i.test(navigator.userAgent) || window.innerWidth <= 768;
+
+    if (isMobile && !inMainMenu) {
+        touchControls.classList.remove('hidden');
+        setupJoystick('p1Joystick', 'p1');
+        setupJoystick('p2Joystick', 'p2');
+        setupTouchButtons();
+    } else {
+        touchControls.classList.add('hidden');
+    }
+}
+
+function setupJoystick(joystickId, player) {
+    const joystick = document.getElementById(joystickId);
+    const stick = joystick.querySelector('.joystick-stick');
+    const base = joystick.querySelector('.joystick-base');
+    const rect = joystick.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const maxDist = 45;
+
+    function updateStick(x, y) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const clampedDist = Math.min(dist, maxDist);
+        const stickX = centerX + Math.cos(angle) * clampedDist - 20;
+        const stickY = centerY + Math.sin(angle) * clampedDist - 20;
+
+        stick.style.transform = `translate(${stickX}px, ${stickY}px)`;
+
+        // Update keys based on joystick angle
+        const deadzone = 0.3;
+        const normX = Math.cos(angle) * (clampedDist / maxDist);
+        const normY = Math.sin(angle) * (clampedDist / maxDist);
+
+        if (player === 'p1') {
+            keys['a'] = normX < -deadzone;
+            keys['d'] = normX > deadzone;
+            keys['w'] = normY < -deadzone;
+            keys['s'] = normY > deadzone;
+        } else {
+            keys['arrowleft'] = normX < -deadzone;
+            keys['arrowright'] = normX > deadzone;
+            keys['arrowup'] = normY < -deadzone;
+            keys['arrowdown'] = normY > deadzone;
+        }
+    }
+
+    function resetStick() {
+        stick.style.transform = 'translate(30px, 30px)';
+        if (player === 'p1') {
+            keys['a'] = keys['d'] = keys['w'] = keys['s'] = false;
+        } else {
+            keys['arrowleft'] = keys['arrowright'] = keys['arrowup'] = keys['arrowdown'] = false;
+        }
+    }
+
+    joystick.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        touchState[player].joystick.active = true;
+        const touch = e.touches[0];
+        const rect = joystick.getBoundingClientRect();
+        updateStick(touch.clientX - rect.left, touch.clientY - rect.top);
+    }, { passive: false });
+
+    joystick.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (!touchState[player].joystick.active) return;
+        const touch = e.touches[0];
+        const rect = joystick.getBoundingClientRect();
+        updateStick(touch.clientX - rect.left, touch.clientY - rect.top);
+    }, { passive: false });
+
+    joystick.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        touchState[player].joystick.active = false;
+        resetStick();
+    }, { passive: false });
+
+    joystick.addEventListener('touchcancel', (e) => {
+        touchState[player].joystick.active = false;
+        resetStick();
+    }, { passive: false });
+}
+
+function setupTouchButtons() {
+    document.querySelectorAll('.touch-btn').forEach(btn => {
+        const key = btn.dataset.key;
+        const action = btn.dataset.action;
+
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            keys[key] = true;
+            btn.classList.add('active');
+        }, { passive: false });
+
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            keys[key] = false;
+            btn.classList.remove('active');
+        }, { passive: false });
+
+        btn.addEventListener('touchcancel', (e) => {
+            keys[key] = false;
+            btn.classList.remove('active');
+        }, { passive: false });
+    });
+}
+
+// Show/hide touch controls on resize
+window.addEventListener('resize', () => {
+    initTouchControls();
+});
+
 // Audio Synthesizer (Web Audio API)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -1079,6 +1203,7 @@ btnMainMenu.addEventListener("click", function () {
     pauseMenu.classList.add("hidden");
     inMainMenu = true;
     mainMenu.classList.remove("hidden");
+    document.getElementById('touchControls').classList.add('hidden');
     restartGame();
 });
 
@@ -1091,6 +1216,7 @@ btnGameOverMainMenu.addEventListener("click", function () {
     gameOverMenu.classList.add("hidden");
     inMainMenu = true;
     mainMenu.classList.remove("hidden");
+    document.getElementById('touchControls').classList.add('hidden');
     restartGame();
 });
 
@@ -1117,6 +1243,7 @@ function selectChar(className) {
         if (gameMode === "1P") {
             charSelectMenu.classList.add("hidden");
             inMainMenu = false;
+            initTouchControls();
             restartGame();
         } else {
             // Mode 2P: Lanjut ke Player 2
@@ -1128,6 +1255,7 @@ function selectChar(className) {
         selectedEnemyClass = className;
         charSelectMenu.classList.add("hidden");
         inMainMenu = false;
+        initTouchControls();
         restartGame();
     }
 }
