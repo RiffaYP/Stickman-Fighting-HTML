@@ -62,12 +62,15 @@ let arenaHeight = 450;
 // Dynamic arrays for projectiles & particles
 let projectiles = [];
 let particles = [];
+let damageNumbers = [];
 let hitStopFrames = 0;
 let screenShake = 0;
 let roundOver = false;
 let roundTimer = 99;
 let roundTimerInterval = null;
 let bgAnimTime = 0;
+let koSlowMo = 0;
+let koSlowMoTarget = null;
 
 // Audio Synthesizer (Web Audio API)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -306,6 +309,7 @@ const player = {
     velocityY: 0,
     jumpPower: 15,
     hp: 100,
+    targetHp: 100,
     ex: 0,
     facing: 1,
     isJumping: false,
@@ -334,6 +338,7 @@ const enemy = {
     speed: 2,
     velocityY: 0,
     hp: 100,
+    targetHp: 100,
     ex: 0,
     facing: -1,
     isJumping: false,
@@ -405,6 +410,50 @@ class Particle {
         ctx.shadowColor = this.color;
         ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
         ctx.fill();
+        ctx.restore();
+    }
+}
+
+class DamageNumber {
+    constructor(x, y, value, isCrit = false, isHeal = false) {
+        this.x = x;
+        this.y = y;
+        this.value = value;
+        this.isCrit = isCrit;
+        this.isHeal = isHeal;
+        this.life = 60;
+        this.maxLife = 60;
+        this.vy = -1.5;
+        this.scale = isCrit ? 1.5 : 1;
+        this.alpha = 1;
+    }
+
+    update() {
+        this.y += this.vy;
+        this.vy *= 0.95;
+        this.life--;
+        this.alpha = this.life / this.maxLife;
+        this.scale *= 0.99;
+    }
+
+    draw() {
+        if (this.life <= 0) return;
+        ctx.save();
+        ctx.font = `bold ${Math.round(24 * this.scale)}px Orbitron`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const color = this.isHeal ? "#22c55e" : (this.isCrit ? "#facc15" : "#ef4444");
+        const glowColor = this.isHeal ? "#22c55e" : (this.isCrit ? "#facc15" : "#ef4444");
+
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = glowColor;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = this.alpha;
+
+        const prefix = this.isHeal ? "+" : "-";
+        ctx.fillText(`${prefix}${this.value}`, this.x, this.y);
+
         ctx.restore();
     }
 }
@@ -1180,6 +1229,12 @@ function playerAttack() {
             playSound('hit');
             triggerHitFlash();
 
+            // Damage number popup
+            const dmgX = enemy.x + enemy.width / 2;
+            const dmgY = (arenaHeight - groundHeight) - enemy.y - enemy.height / 2;
+            const isCrit = enemy.isJuggling; // Crit on juggle hits
+            damageNumbers.push(new DamageNumber(dmgX, dmgY, Math.round(player.damage), isCrit));
+
             // Efek darah/percikan merah
             const sparkX = enemy.x + enemy.width / 2;
             const sparkY = (arenaHeight - groundHeight) - enemy.y - enemy.height / 2;
@@ -1262,6 +1317,12 @@ function enemyAttack() {
 
             playSound('hit');
             triggerHitFlash();
+
+            // Damage number popup
+            const dmgX = player.x + player.width / 2;
+            const dmgY = (arenaHeight - groundHeight) - player.y - player.height / 2;
+            const isCrit = player.isJuggling;
+            damageNumbers.push(new DamageNumber(dmgX, dmgY, Math.round(enemy.damage), isCrit));
 
             const sparkX = player.x + player.width / 2;
             const sparkY = (arenaHeight - groundHeight) - player.y - player.height / 2;
@@ -1362,16 +1423,64 @@ function limitPosition(character) {
 }
 
 function updateHealthBars() {
+    // Smooth HP animation
+    player.targetHp = player.hp;
+    enemy.targetHp = enemy.hp;
+
     // HP
-    const pHPPercent = Math.max(0, (player.hp / CHARACTER_CLASSES[player.className].maxHp) * 100);
-    const eHPPercent = Math.max(0, (enemy.hp / CHARACTER_CLASSES[enemy.className].maxHp) * 100);
+    const pMaxHp = CHARACTER_CLASSES[player.className].maxHp;
+    const eMaxHp = CHARACTER_CLASSES[enemy.className].maxHp;
+
+    // Animate displayed HP towards target
+    if (!player.displayHp) player.displayHp = player.hp;
+    if (!enemy.displayHp) enemy.displayHp = enemy.hp;
+
+    player.displayHp += (player.targetHp - player.displayHp) * 0.15;
+    enemy.displayHp += (enemy.targetHp - enemy.displayHp) * 0.15;
+
+    const pHPPercent = Math.max(0, (player.displayHp / pMaxHp) * 100);
+    const eHPPercent = Math.max(0, (enemy.displayHp / eMaxHp) * 100);
 
     playerHealthElement.style.width = pHPPercent + "%";
     enemyHealthElement.style.width = eHPPercent + "%";
 
-    // EX Bars
-    playerExElement.style.width = player.ex + "%";
-    enemyExElement.style.width = enemy.ex + "%";
+    // Low HP warning pulse
+    if (pHPPercent < 25) {
+        playerHealthElement.style.boxShadow = "0 0 15px rgba(239, 68, 68, 0.8)";
+        playerHealthElement.style.animation = "hpPulse 0.5s infinite";
+    } else {
+        playerHealthElement.style.boxShadow = "0 0 12px rgba(34, 197, 94, 0.5)";
+        playerHealthElement.style.animation = "none";
+    }
+    if (eHPPercent < 25) {
+        enemyHealthElement.style.boxShadow = "0 0 15px rgba(239, 68, 68, 0.8)";
+        enemyHealthElement.style.animation = "hpPulse 0.5s infinite";
+    } else {
+        enemyHealthElement.style.boxShadow = "0 0 12px rgba(239, 68, 68, 0.5)";
+        enemyHealthElement.style.animation = "none";
+    }
+
+    // EX Bars with smooth animation
+    if (!player.displayEx) player.displayEx = player.ex;
+    if (!enemy.displayEx) enemy.displayEx = enemy.ex;
+
+    player.displayEx += (player.ex - player.displayEx) * 0.2;
+    enemy.displayEx += (enemy.ex - enemy.displayEx) * 0.2;
+
+    playerExElement.style.width = player.displayEx + "%";
+    enemyExElement.style.width = enemy.displayEx + "%";
+
+    // EX full glow
+    if (player.displayEx >= 100) {
+        playerExElement.style.boxShadow = "0 0 20px rgba(6, 182, 212, 1), 0 0 40px rgba(168, 85, 247, 0.5)";
+    } else {
+        playerExElement.style.boxShadow = "0 0 8px rgba(6, 182, 212, 0.6)";
+    }
+    if (enemy.displayEx >= 100) {
+        enemyExElement.style.boxShadow = "0 0 20px rgba(249, 115, 22, 1), 0 0 40px rgba(168, 85, 247, 0.5)";
+    } else {
+        enemyExElement.style.boxShadow = "0 0 8px rgba(249, 115, 22, 0.6)";
+    }
 
     // Class Names displays
     playerClassNameElement.textContent = CHARACTER_CLASSES[player.className].name;
@@ -1419,16 +1528,20 @@ function checkWinner() {
         gameRunning = false;
         roundOver = true;
         if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
-        const msg = gameMode === "1P" ? "PLAYER WIN!" : "PLAYER 1 WIN!";
-        statusText.textContent = msg;
-        showGameOver(msg);
+        // KO Slow-mo
+        koSlowMo = 90; // 1.5 seconds at 60fps
+        koSlowMoTarget = enemy;
+        screenShake = 20;
+        hitStopFrames = 30;
     } else if (player.hp <= 0) {
         gameRunning = false;
         roundOver = true;
         if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
-        const msg = gameMode === "1P" ? "ENEMY WIN!" : "PLAYER 2 WIN!";
-        statusText.textContent = msg;
-        showGameOver(msg);
+        // KO Slow-mo
+        koSlowMo = 90;
+        koSlowMoTarget = player;
+        screenShake = 20;
+        hitStopFrames = 30;
     } else if (roundTimer <= 0) {
         gameRunning = false;
         roundOver = true;
@@ -1677,6 +1790,10 @@ function updateProjectiles() {
 
                 playSound('hit');
                 triggerHitFlash();
+
+                // Damage number popup for projectile
+                const isCrit = target.isJuggling;
+                damageNumbers.push(new DamageNumber(p.x, p.y, 12, isCrit));
 
                 spawnSparks(p.x, p.y, target.lightColor);
                 spawnImpactDust(p.x, p.y, target.lightColor);
@@ -2012,9 +2129,31 @@ function render() {
             particles[i].draw();
         }
     }
+
+    // 8. Update and Draw Damage Numbers
+    for (let i = damageNumbers.length - 1; i >= 0; i--) {
+        damageNumbers[i].update();
+        if (damageNumbers[i].life <= 0) {
+            damageNumbers.splice(i, 1);
+        } else {
+            damageNumbers[i].draw();
+        }
+    }
 }
 
 function gameLoop() {
+    // KO Slow-mo handling
+    if (koSlowMo > 0) {
+        koSlowMo--;
+        if (koSlowMo <= 0 && koSlowMoTarget) {
+            // Trigger game over after slow-mo
+            const msg = koSlowMoTarget === player ? (gameMode === "1P" ? "ENEMY WIN!" : "PLAYER 2 WIN!") : (gameMode === "1P" ? "PLAYER WIN!" : "PLAYER 1 WIN!");
+            statusText.textContent = msg;
+            showGameOver(msg);
+            koSlowMoTarget = null;
+        }
+    }
+
     if (!inMainMenu && !isPaused && !isCountingDown) {
         if (hitStopFrames > 0) {
             hitStopFrames--;
@@ -2098,10 +2237,13 @@ function restartGame() {
 
     projectiles = [];
     particles = [];
+    damageNumbers = [];
     hitStopFrames = 0;
     screenShake = 0;
     roundOver = false;
     roundTimer = 99;
+    koSlowMo = 0;
+    koSlowMoTarget = null;
     if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
     roundTimerInterval = setInterval(() => {
         if (gameRunning && !roundOver && roundTimer > 0) {

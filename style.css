@@ -416,6 +416,15 @@ h1 {
     box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
 }
 
+@keyframes hpPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.4); }
+}
+
+.ex-fill {
+    transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Arena visual upgrade */
 .arena {
     position: relative;
