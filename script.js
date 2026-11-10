@@ -41,7 +41,9 @@ const btnGameOverMainMenu = document.getElementById("btnGameOverMainMenu");
 const keys = {};
 
 const groundHeight = 45;
-const gravity = 0.65;
+const gravity = 0.95;
+const airDrag = 0.97;
+const groundFriction = 0.85;
 
 // Game states
 let gameRunning = false;
@@ -192,7 +194,7 @@ const CHARACTER_CLASSES = {
         name: "Striker",
         maxHp: 100,
         speed: 5,
-        jumpPower: 13,
+        jumpPower: 16,
         damage: 10,
         color: "#3b82f6",
         lightColor: "#60a5fa",
@@ -200,13 +202,15 @@ const CHARACTER_CLASSES = {
         weaponType: "saber",
         bladeLength: 45,
         lineWidth: 5,
-        projectileColor: "#60a5fa"
+        projectileColor: "#60a5fa",
+        knockbackResistance: 1.0,
+        juggleDecay: 0.92
     },
     titan: {
         name: "Titan",
         maxHp: 130,
         speed: 3.5,
-        jumpPower: 11,
+        jumpPower: 14,
         damage: 16,
         color: "#22c55e",
         lightColor: "#86efac",
@@ -214,13 +218,15 @@ const CHARACTER_CLASSES = {
         weaponType: "greatsword",
         bladeLength: 60,
         lineWidth: 8,
-        projectileColor: "#22c55e"
+        projectileColor: "#22c55e",
+        knockbackResistance: 1.4,
+        juggleDecay: 0.88
     },
     shadow: {
         name: "Shadow",
         maxHp: 85,
         speed: 6.8,
-        jumpPower: 15,
+        jumpPower: 18,
         damage: 6.5,
         color: "#a855f7",
         lightColor: "#d8b4fe",
@@ -228,7 +234,9 @@ const CHARACTER_CLASSES = {
         weaponType: "daggers",
         bladeLength: 32,
         lineWidth: 4,
-        projectileColor: "#a855f7"
+        projectileColor: "#a855f7",
+        knockbackResistance: 0.8,
+        juggleDecay: 0.95
     }
 };
 
@@ -254,11 +262,15 @@ const player = {
     isShooting: false,
     hitTimer: 0,
     isHitstun: 0,
+    isJuggling: false,
+    juggleCount: 0,
     animTime: 0,
     attackStartTime: 0,
     swordTrail: [],
     isMoving: false,
-    className: "striker"
+    className: "striker",
+    knockbackResistance: 1.0,
+    juggleDecay: 0.92
 };
 
 const enemy = {
@@ -278,6 +290,8 @@ const enemy = {
     isShooting: false,
     hitTimer: 0,
     isHitstun: 0,
+    isJuggling: false,
+    juggleCount: 0,
     animTime: 0,
     attackStartTime: 0,
     blockingTimer: 0,
@@ -285,7 +299,9 @@ const enemy = {
     isMoving: false,
     className: "striker",
     aiState: "chase",
-    aiStateTimer: 0
+    aiStateTimer: 0,
+    knockbackResistance: 1.0,
+    juggleDecay: 0.92
 };
 
 function applyClassStats(char, className) {
@@ -303,6 +319,8 @@ function applyClassStats(char, className) {
     char.bladeLength = info.bladeLength;
     char.lineWidth = info.lineWidth;
     char.projectileColor = info.projectileColor;
+    char.knockbackResistance = info.knockbackResistance;
+    char.juggleDecay = info.juggleDecay;
 }
 
 class Particle {
@@ -628,71 +646,102 @@ function selectChar(className) {
 
 function updatePlayerMovement() {
     if (!gameRunning) return;
-    if (player.isHitstun > 0) {
-        player.isHitstun--;
+
+    // Pasif EX charge
+    player.ex = Math.min(100, player.ex + 0.05);
+
+    const isGrounded = player.y <= 0;
+    const inHitstun = player.isHitstun > 0;
+    const inJuggle = player.isJuggling;
+
+    if (inHitstun || inJuggle) {
+        player.isHitstun = Math.max(0, player.isHitstun - 1);
         player.isBlocking = false;
         player.isMoving = false;
-        player.velocityX *= 0.94;
+
+        // Air physics during hitstun/juggle
+        player.velocityX *= airDrag;
         player.x += player.velocityX;
         player.y += player.velocityY;
         player.velocityY -= gravity;
-        if (player.y <= 0) { player.y = 0; player.velocityY = 0; if (player.isJumping) { player.isJumping = false; spawnImpactDust(player.x + player.width / 2, arenaHeight - groundHeight, player.color); } }
+
+        // Ground recovery
+        if (player.y <= 0) {
+            player.y = 0;
+            player.velocityY = 0;
+            if (player.isJumping || inJuggle) {
+                player.isJumping = false;
+                player.isJuggling = false;
+                player.juggleCount = 0;
+                spawnImpactDust(player.x + player.width / 2, arenaHeight - groundHeight, player.color);
+            }
+        }
         limitPosition(player);
         return;
     }
 
     player.isMoving = false;
 
-    // Pasif EX charge
-    player.ex = Math.min(100, player.ex + 0.05);
-
     // Tangkis/Block dengan menahan tombol S
-    if (keys["s"]) {
+    if (keys["s"] && isGrounded) {
         player.isBlocking = true;
     } else {
         player.isBlocking = false;
 
-        if (keys["a"]) {
-            player.velocityX -= player.speed * 0.22;
-            player.facing = -1;
-            player.isMoving = true;
-
-            if (!player.isJumping && Math.random() < 0.2) {
+        if (isGrounded) {
+            if (keys["a"]) {
+                player.velocityX -= player.speed * 0.22;
+                player.facing = -1;
+                player.isMoving = true;
+                if (Math.random() < 0.2) spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
+            }
+            if (keys["d"]) {
+                player.velocityX += player.speed * 0.22;
+                player.facing = 1;
+                player.isMoving = true;
+                if (Math.random() < 0.2) spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
+            }
+            if (keys["w"] && !player.isJumping) {
+                player.velocityY = player.jumpPower;
+                player.isJumping = true;
+                playSound('jump');
                 spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
             }
-        }
-
-        if (keys["d"]) {
-            player.velocityX += player.speed * 0.22;
-            player.facing = 1;
-            player.isMoving = true;
-
-            if (!player.isJumping && Math.random() < 0.2) {
-                spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
+        } else {
+            // Air control - reduced
+            if (keys["a"]) {
+                player.velocityX -= player.speed * 0.08;
+                player.facing = -1;
             }
-        }
-
-        if (keys["w"] && !player.isJumping) {
-            player.velocityY = player.jumpPower;
-            player.isJumping = true;
-            playSound('jump');
-            spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
+            if (keys["d"]) {
+                player.velocityX += player.speed * 0.08;
+                player.facing = 1;
+            }
         }
     }
 
     if (player.isBlocking) player.velocityX = 0;
-    player.velocityX *= player.isMoving ? 0.82 : 0.68;
+
+    // Apply friction/drag
+    if (isGrounded) {
+        player.velocityX *= player.isMoving ? groundFriction : 0.68;
+    } else {
+        player.velocityX *= airDrag;
+    }
+
     player.velocityX = Math.max(-player.speed, Math.min(player.speed, player.velocityX));
     player.x += player.velocityX;
-    player.animTime += player.isMoving ? Math.abs(player.velocityX) * 0.045 : 0.035;
+    player.animTime += player.isMoving ? Math.abs(player.velocityX) * 0.045 : (inJuggle ? 0.02 : 0.035);
     player.y += player.velocityY;
     player.velocityY -= gravity;
 
     if (player.y <= 0) {
         player.y = 0;
         player.velocityY = 0;
-        if (player.isJumping) {
+        if (player.isJumping || player.isJuggling) {
             player.isJumping = false;
+            player.isJuggling = false;
+            player.juggleCount = 0;
             spawnImpactDust(player.x + player.width / 2, arenaHeight - groundHeight, player.color);
         }
     }
@@ -702,234 +751,278 @@ function updatePlayerMovement() {
     // Serang & Hadouken Player 1
     if (keys["j"]) {
         playerAttack();
-        keys["j"] = false; // consume input
+        keys["j"] = false;
     }
     if (keys["k"]) {
         playerShoot();
-        keys["k"] = false; // consume input
+        keys["k"] = false;
     }
 }
 
 function updateEnemyPlayerMovement() {
     if (!gameRunning) return;
-    if (enemy.isHitstun > 0) {
-        enemy.isHitstun--;
+
+    // Pasif EX charge
+    enemy.ex = Math.min(100, enemy.ex + 0.05);
+
+    const isGrounded = enemy.y <= 0;
+    const inHitstun = enemy.isHitstun > 0;
+    const inJuggle = enemy.isJuggling;
+
+    if (inHitstun || inJuggle) {
+        enemy.isHitstun = Math.max(0, enemy.isHitstun - 1);
         enemy.isBlocking = false;
         enemy.isMoving = false;
-        enemy.velocityX *= 0.94;
+
+        // Air physics during hitstun/juggle
+        enemy.velocityX *= airDrag;
         enemy.x += enemy.velocityX;
         enemy.y += enemy.velocityY;
         enemy.velocityY -= gravity;
-        if (enemy.y <= 0) { enemy.y = 0; enemy.velocityY = 0; if (enemy.isJumping) { enemy.isJumping = false; spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color); } }
+
+        // Ground recovery
+        if (enemy.y <= 0) {
+            enemy.y = 0;
+            enemy.velocityY = 0;
+            if (enemy.isJumping || inJuggle) {
+                enemy.isJumping = false;
+                enemy.isJuggling = false;
+                enemy.juggleCount = 0;
+                spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
+            }
+        }
         limitPosition(enemy);
         return;
     }
 
     enemy.isMoving = false;
 
-    // Pasif EX charge
-    enemy.ex = Math.min(100, enemy.ex + 0.05);
-
     // Tangkis/Block dengan menahan tombol ArrowDown
-    if (keys["arrowdown"]) {
+    if (keys["arrowdown"] && isGrounded) {
         enemy.isBlocking = true;
     } else {
         enemy.isBlocking = false;
 
-        if (keys["arrowleft"]) {
-            enemy.velocityX -= enemy.speed * 0.22;
-            enemy.facing = -1;
-            enemy.isMoving = true;
-
-            if (!enemy.isJumping && Math.random() < 0.2) {
+        if (isGrounded) {
+            if (keys["arrowleft"]) {
+                enemy.velocityX -= enemy.speed * 0.22;
+                enemy.facing = -1;
+                enemy.isMoving = true;
+                if (Math.random() < 0.2) spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
+            }
+            if (keys["arrowright"]) {
+                enemy.velocityX += enemy.speed * 0.22;
+                enemy.facing = 1;
+                enemy.isMoving = true;
+                if (Math.random() < 0.2) spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
+            }
+            if (keys["arrowup"] && !enemy.isJumping) {
+                enemy.velocityY = enemy.jumpPower;
+                enemy.isJumping = true;
+                playSound('jump');
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
             }
-        }
-
-        if (keys["arrowright"]) {
-            enemy.velocityX += enemy.speed * 0.22;
-            enemy.facing = 1;
-            enemy.isMoving = true;
-
-            if (!enemy.isJumping && Math.random() < 0.2) {
-                spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
+        } else {
+            // Air control - reduced
+            if (keys["arrowleft"]) {
+                enemy.velocityX -= enemy.speed * 0.08;
+                enemy.facing = -1;
             }
-        }
-
-        if (keys["arrowup"] && !enemy.isJumping) {
-            enemy.velocityY = enemy.jumpPower;
-            enemy.isJumping = true;
-            playSound('jump');
-            spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
+            if (keys["arrowright"]) {
+                enemy.velocityX += enemy.speed * 0.08;
+                enemy.facing = 1;
+            }
         }
     }
 
+    if (enemy.isBlocking) enemy.velocityX = 0;
+
+    // Apply friction/drag
+    if (isGrounded) {
+        enemy.velocityX *= enemy.isMoving ? groundFriction : 0.68;
+    } else {
+        enemy.velocityX *= airDrag;
+    }
+
+    enemy.velocityX = Math.max(-enemy.speed, Math.min(enemy.speed, enemy.velocityX));
+    enemy.x += enemy.velocityX;
+    enemy.animTime += enemy.isMoving ? Math.abs(enemy.velocityX) * 0.045 : (inJuggle ? 0.02 : 0.035);
     enemy.y += enemy.velocityY;
     enemy.velocityY -= gravity;
 
     if (enemy.y <= 0) {
         enemy.y = 0;
         enemy.velocityY = 0;
-        if (enemy.isJumping) {
+        if (enemy.isJumping || enemy.isJuggling) {
             enemy.isJumping = false;
+            enemy.isJuggling = false;
+            enemy.juggleCount = 0;
             spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
         }
     }
-
-    if (enemy.isBlocking) enemy.velocityX = 0;
-    enemy.velocityX *= enemy.isMoving ? 0.82 : 0.68;
-    enemy.velocityX = Math.max(-enemy.speed, Math.min(enemy.speed, enemy.velocityX));
-    enemy.x += enemy.velocityX;
-    enemy.animTime += enemy.isMoving ? Math.abs(enemy.velocityX) * 0.045 : 0.035;
 
     limitPosition(enemy);
 
     // Serang & Hadouken Player 2
     if (keys["0"]) {
         enemyAttack();
-        keys["0"] = false; // consume input
+        keys["0"] = false;
     }
     if (keys["1"]) {
         enemyShoot();
-        keys["1"] = false; // consume input
+        keys["1"] = false;
     }
 }
 
 function updateEnemyAI() {
     if (!gameRunning) return;
-    if (enemy.isHitstun > 0) {
-        enemy.isHitstun--;
+
+    // Pasif EX charge
+    enemy.ex = Math.min(100, enemy.ex + 0.05);
+
+    const isGrounded = enemy.y <= 0;
+    const inHitstun = enemy.isHitstun > 0;
+    const inJuggle = enemy.isJuggling;
+
+    if (inHitstun || inJuggle) {
+        enemy.isHitstun = Math.max(0, enemy.isHitstun - 1);
         enemy.isBlocking = false;
         enemy.isMoving = false;
-        enemy.velocityX *= 0.94;
+
+        // Air physics during hitstun/juggle
+        enemy.velocityX *= airDrag;
         enemy.x += enemy.velocityX;
         enemy.y += enemy.velocityY;
         enemy.velocityY -= gravity;
-        if (enemy.y <= 0) { enemy.y = 0; enemy.velocityY = 0; if (enemy.isJumping) { enemy.isJumping = false; spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color); } }
+
+        // Ground recovery
+        if (enemy.y <= 0) {
+            enemy.y = 0;
+            enemy.velocityY = 0;
+            if (enemy.isJumping || inJuggle) {
+                enemy.isJumping = false;
+                enemy.isJuggling = false;
+                enemy.juggleCount = 0;
+                spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
+            }
+        }
         limitPosition(enemy);
         return;
     }
 
     enemy.isMoving = false;
 
-    // Pasif EX charge
-    enemy.ex = Math.min(100, enemy.ex + 0.05);
-
     const distance = getDistance(player, enemy);
+    const isEasyMode = gameMode === "1P";
 
-    // AI Blocking Reaction (React to player attacking)
-    // Diturunkan peluangnya agar AI lebih mudah
+    // AI Blocking Reaction - easier in 1P
+    const blockChance = isEasyMode ? 0.008 : 0.015;
+    const blockDistance = isEasyMode ? 100 : 130;
+    const blockTimer = isEasyMode ? 8 : 12;
+
     if (enemy.blockingTimer > 0) {
         enemy.blockingTimer--;
         enemy.isBlocking = true;
-        return;
     } else {
         enemy.isBlocking = false;
-
-        if (player.isAttacking && distance < 130 && Math.random() < 0.015 && !enemy.attackCooldown) {
+        if (player.isAttacking && distance < blockDistance && Math.random() < blockChance && !enemy.attackCooldown) {
             enemy.isBlocking = true;
-            enemy.blockingTimer = 12; // menangkis lebih singkat
-            return;
+            enemy.blockingTimer = blockTimer;
         }
     }
 
-    // AI State Machine (Untuk mengurangi keagresifan)
+    // AI State Machine - easier in 1P
     if (enemy.aiStateTimer <= 0) {
         const rand = Math.random();
 
         if (distance > 220) {
-            // Jarak Jauh: 70% Chase, 15% Shoot, 15% Idle
-            if (rand < 0.70) {
-                enemy.aiState = "chase";
-            } else if (rand < 0.85) {
-                enemy.aiState = "shoot";
-            } else {
-                enemy.aiState = "idle";
-            }
-            enemy.aiStateTimer = 30 + Math.random() * 30; // 0.5s - 1.0s
+            // Far: more idle in easy mode
+            const chaseChance = isEasyMode ? 0.55 : 0.70;
+            const shootChance = isEasyMode ? 0.70 : 0.85;
+            if (rand < chaseChance) enemy.aiState = "chase";
+            else if (rand < shootChance) enemy.aiState = "shoot";
+            else enemy.aiState = "idle";
+            enemy.aiStateTimer = 40 + Math.random() * 40; // longer delays in easy
         } else {
-            // Jarak Dekat: Jika serangan cooldown, 50% mundur, 25% diam, 25% serang balik
+            // Close range
             if (enemy.attackCooldown) {
-                if (rand < 0.50) {
-                    enemy.aiState = "retreat";
-                } else if (rand < 0.75) {
-                    enemy.aiState = "idle";
-                } else {
-                    enemy.aiState = "chase";
-                }
+                // More retreat/idle in easy mode
+                const retreatChance = isEasyMode ? 0.60 : 0.50;
+                const idleChance = isEasyMode ? 0.80 : 0.75;
+                if (rand < retreatChance) enemy.aiState = "retreat";
+                else if (rand < idleChance) enemy.aiState = "idle";
+                else enemy.aiState = "chase";
             } else {
-                // Siap menyerang: 35% serang/chase, 15% tangkis, 50% idle (banyak diam)
-                if (rand < 0.35) {
-                    enemy.aiState = "chase";
-                } else if (rand < 0.50) {
-                    enemy.aiState = "defend";
-                } else {
-                    enemy.aiState = "idle";
-                }
+                // Ready to attack - much less aggressive in easy
+                const attackChance = isEasyMode ? 0.20 : 0.35;
+                const defendChance = isEasyMode ? 0.30 : 0.50;
+                if (rand < attackChance) enemy.aiState = "chase";
+                else if (rand < defendChance) enemy.aiState = "defend";
+                else enemy.aiState = "idle";
             }
-            enemy.aiStateTimer = 30 + Math.random() * 40; // 0.5s - 1.1s (lebih lama)
+            enemy.aiStateTimer = 45 + Math.random() * 50; // longer delays
         }
     } else {
         enemy.aiStateTimer--;
     }
 
-    // Eksekusi State
+    // Execute State
     if (enemy.aiState === "shoot") {
-        if (enemy.ex >= 30 && Math.random() < 0.8) {
+        if (enemy.ex >= 30 && Math.random() < (isEasyMode ? 0.5 : 0.8)) {
             enemyShoot();
         } else {
-            enemy.aiState = "chase"; // ganti state jika EX tidak cukup
+            enemy.aiState = "chase";
         }
     }
 
     if (enemy.aiState === "defend") {
         enemy.isBlocking = true;
-        return; // berdiri diam dan menangkis
+        return;
     }
 
-    if (player.x < enemy.x) {
-        enemy.facing = -1;
-    } else {
-        enemy.facing = 1;
-    }
+    if (player.x < enemy.x) enemy.facing = -1;
+    else enemy.facing = 1;
 
     if (enemy.aiState === "chase") {
-        if (distance > 110) {
-            enemy.isMoving = true;
-            enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.22;
+        const chaseDistance = isEasyMode ? 130 : 110;
+        const attackChance = isEasyMode ? 0.45 : 0.70;
 
-            if (Math.random() < 0.03 && !enemy.isJumping) {
+        if (distance > chaseDistance) {
+            enemy.isMoving = true;
+            enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.18; // slower approach
+
+            if (Math.random() < 0.02 && !enemy.isJumping && isGrounded) {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
             }
-        } else if (Math.random() < 0.7) {
-            // 70% chance to attack, 30% chance to hesitate
+        } else if (Math.random() < attackChance) {
             enemyAttack();
         }
     } else if (enemy.aiState === "retreat") {
-        // Mundur dari player
         enemy.isMoving = true;
         enemy.animTime += 0.15;
-
-        // Mundur dengan kecepatan lebih lambat (75% speed kelas)
         const retreatSpeed = enemy.speed * 0.75;
-        enemy.velocityX += (player.x < enemy.x ? 1 : -1) * retreatSpeed * 0.22;
+        enemy.velocityX += (player.x < enemy.x ? 1 : -1) * retreatSpeed * 0.18;
 
-        if (Math.random() < 0.05 && !enemy.isJumping) {
+        if (Math.random() < 0.03 && !enemy.isJumping && isGrounded) {
             spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
         }
     } else if (enemy.aiState === "idle") {
-        // Diam, tidak melakukan apa-apa
         enemy.isMoving = false;
     }
 
-    // AI physics (in case of gravity/pushback)
+    // AI physics
     if (enemy.isBlocking) enemy.velocityX = 0;
-    enemy.velocityX *= enemy.isMoving ? 0.82 : 0.68;
+    if (isGrounded) {
+        enemy.velocityX *= enemy.isMoving ? groundFriction : 0.68;
+    } else {
+        enemy.velocityX *= airDrag;
+    }
     enemy.velocityX = Math.max(-enemy.speed, Math.min(enemy.speed, enemy.velocityX));
     enemy.x += enemy.velocityX;
     enemy.animTime += enemy.isMoving ? Math.abs(enemy.velocityX) * 0.045 : 0.035;
     enemy.y += enemy.velocityY;
     enemy.velocityY -= gravity;
+
     if (enemy.y <= 0) {
         enemy.y = 0;
         enemy.velocityY = 0;
@@ -967,7 +1060,7 @@ function playerAttack() {
             enemy.ex = Math.min(100, enemy.ex + 10);
 
             // Dorongan balik kecil
-            enemy.x += player.facing * 12;
+            enemy.velocityX += player.facing * 8 / (enemy.knockbackResistance || 1);
 
             playSound('block');
 
@@ -977,22 +1070,43 @@ function playerAttack() {
             spawnSparks(sparkX, sparkY, "#facc15");
             spawnImpactDust(sparkX, sparkY, "#facc15");
         } else {
-            // Serangan telak
+            // Serangan telak - apply knockback/juggle
             enemy.hp -= player.damage;
             enemy.hp = Math.max(enemy.hp, 0);
-            enemy.hitTimer = 10; // Flashing putih
-            enemy.isHitstun = 14;
-            enemy.velocityX += player.facing * 5;
-            hitStopFrames = 5;
-            screenShake = 7;
+            enemy.hitTimer = 12;
+
+            // Calculate knockback based on resistance
+            const kbResist = enemy.knockbackResistance || 1;
+            const baseKnockbackX = 8 / kbResist;
+            const baseKnockbackY = 10 / kbResist;
+
+            // Ground hit vs air hit
+            const wasGrounded = enemy.y <= 0;
+            const isJuggle = enemy.isJuggling || (!wasGrounded && enemy.juggleCount < 3);
+
+            if (isJuggle || !wasGrounded) {
+                // Air juggle - launch upward
+                enemy.isJuggling = true;
+                enemy.juggleCount++;
+                enemy.velocityY = baseKnockbackY * (1.2 - enemy.juggleCount * 0.15); // decaying juggle height
+                enemy.velocityX += player.facing * baseKnockbackX * 0.8;
+                enemy.isHitstun = 18 + enemy.juggleCount * 3;
+                hitStopFrames = 8;
+                screenShake = 10;
+            } else {
+                // Ground hit - horizontal knockback with slight lift
+                enemy.velocityX += player.facing * baseKnockbackX * 1.5;
+                enemy.velocityY = baseKnockbackY * 0.6;
+                enemy.isHitstun = 16;
+                hitStopFrames = 6;
+                screenShake = 8;
+                enemy.isJuggling = true; // allow follow-up juggles
+                enemy.juggleCount = 1;
+            }
 
             // Serangan sukses menambah EX penyerang
             player.ex = Math.min(100, player.ex + 15);
-            // Musuh yang terpukul mendapat EX sedikit
             enemy.ex = Math.min(100, enemy.ex + 6);
-
-            // Dorongan balik besar
-            enemy.x += player.facing * 25;
 
             playSound('hit');
             triggerHitFlash();
@@ -1008,13 +1122,8 @@ function playerAttack() {
         checkWinner();
     }
 
-    setTimeout(function () {
-        player.isAttacking = false;
-    }, 180);
-
-    setTimeout(function () {
-        player.attackCooldown = false;
-    }, 450);
+    setTimeout(() => { player.isAttacking = false; }, 180);
+    setTimeout(() => { player.attackCooldown = false; }, 450);
 }
 
 function enemyAttack() {
@@ -1035,12 +1144,12 @@ function enemyAttack() {
     if (distance < (enemy.bladeLength + 70) && playerIsInFront) {
         // Cek jika player menangkis
         if (player.isBlocking && player.facing === -enemy.facing) {
-            player.hp -= 1; // chip damage
+            player.hp -= 1;
             player.hp = Math.max(player.hp, 0);
 
             player.ex = Math.min(100, player.ex + 10);
 
-            player.x += enemy.facing * 10;
+            player.velocityX += enemy.facing * 8 / (player.knockbackResistance || 1);
 
             playSound('block');
 
@@ -1049,19 +1158,38 @@ function enemyAttack() {
             spawnSparks(sparkX, sparkY, "#facc15");
             spawnImpactDust(sparkX, sparkY, "#facc15");
         } else {
-            // Serangan telak
+            // Serangan telak - apply knockback/juggle
             player.hp -= enemy.damage;
             player.hp = Math.max(player.hp, 0);
-            player.hitTimer = 10;
-            player.isHitstun = 14;
-            player.velocityX += enemy.facing * 5;
-            hitStopFrames = 5;
-            screenShake = 7;
+            player.hitTimer = 12;
+
+            const kbResist = player.knockbackResistance || 1;
+            const baseKnockbackX = 8 / kbResist;
+            const baseKnockbackY = 10 / kbResist;
+
+            const wasGrounded = player.y <= 0;
+            const isJuggle = player.isJuggling || (!wasGrounded && player.juggleCount < 3);
+
+            if (isJuggle || !wasGrounded) {
+                player.isJuggling = true;
+                player.juggleCount++;
+                player.velocityY = baseKnockbackY * (1.2 - player.juggleCount * 0.15);
+                player.velocityX += enemy.facing * baseKnockbackX * 0.8;
+                player.isHitstun = 18 + player.juggleCount * 3;
+                hitStopFrames = 8;
+                screenShake = 10;
+            } else {
+                player.velocityX += enemy.facing * baseKnockbackX * 1.5;
+                player.velocityY = baseKnockbackY * 0.6;
+                player.isHitstun = 16;
+                hitStopFrames = 6;
+                screenShake = 8;
+                player.isJuggling = true;
+                player.juggleCount = 1;
+            }
 
             enemy.ex = Math.min(100, enemy.ex + 15);
             player.ex = Math.min(100, player.ex + 6);
-
-            player.x += enemy.facing * 18;
 
             playSound('hit');
             triggerHitFlash();
@@ -1079,13 +1207,8 @@ function enemyAttack() {
     const duration = gameMode === "2P" ? 180 : 200;
     const cooldown = gameMode === "2P" ? 450 : 900;
 
-    setTimeout(function () {
-        enemy.isAttacking = false;
-    }, duration);
-
-    setTimeout(function () {
-        enemy.attackCooldown = false;
-    }, cooldown);
+    setTimeout(() => { enemy.isAttacking = false; }, duration);
+    setTimeout(() => { enemy.attackCooldown = false; }, cooldown);
 }
 
 function playerShoot() {
@@ -1416,26 +1539,46 @@ function updateProjectiles() {
                 target.hp = Math.max(target.hp, 0);
                 target.ex = Math.min(100, target.ex + 10);
 
-                target.x += p.owner.facing * 10;
+                target.velocityX += p.owner.facing * 8 / (target.knockbackResistance || 1);
                 playSound('block');
 
                 // Yellow block sparks
                 spawnSparks(p.x, p.y, "#facc15");
                 spawnImpactDust(p.x, p.y, "#facc15");
             } else {
-                // Hit!
+                // Hit! - apply juggle physics
                 target.hp -= 12; // Projectile damage
                 target.hp = Math.max(target.hp, 0);
-                target.hitTimer = 10;
-                target.isHitstun = 12;
-                target.velocityX += p.owner.facing * 4;
-                hitStopFrames = 4;
-                screenShake = 5;
+                target.hitTimer = 12;
+
+                const kbResist = target.knockbackResistance || 1;
+                const baseKnockbackX = 6 / kbResist;
+                const baseKnockbackY = 9 / kbResist;
+
+                const wasGrounded = target.y <= 0;
+                const isJuggle = target.isJuggling || (!wasGrounded && target.juggleCount < 3);
+
+                if (isJuggle || !wasGrounded) {
+                    target.isJuggling = true;
+                    target.juggleCount++;
+                    target.velocityY = baseKnockbackY * (1.1 - target.juggleCount * 0.15);
+                    target.velocityX += p.owner.facing * baseKnockbackX * 0.7;
+                    target.isHitstun = 16 + target.juggleCount * 2;
+                    hitStopFrames = 6;
+                    screenShake = 8;
+                } else {
+                    target.velocityX += p.owner.facing * baseKnockbackX * 1.3;
+                    target.velocityY = baseKnockbackY * 0.5;
+                    target.isHitstun = 14;
+                    hitStopFrames = 5;
+                    screenShake = 6;
+                    target.isJuggling = true;
+                    target.juggleCount = 1;
+                }
 
                 p.owner.ex = Math.min(100, p.owner.ex + 15);
                 target.ex = Math.min(100, target.ex + 6);
 
-                target.x += p.owner.facing * 20;
                 playSound('hit');
                 triggerHitFlash();
 
@@ -1825,6 +1968,8 @@ function restartGame() {
     player.isShooting = false;
     player.hitTimer = 0;
     player.isHitstun = 0;
+    player.isJuggling = false;
+    player.juggleCount = 0;
     player.animTime = 0;
     player.swordTrail = [];
     player.isMoving = false;
@@ -1846,6 +1991,8 @@ function restartGame() {
     enemy.isShooting = false;
     enemy.hitTimer = 0;
     enemy.isHitstun = 0;
+    enemy.isJuggling = false;
+    enemy.juggleCount = 0;
     enemy.animTime = 0;
     enemy.blockingTimer = 0;
     enemy.swordTrail = [];
