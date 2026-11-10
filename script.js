@@ -72,6 +72,76 @@ let bgAnimTime = 0;
 let koSlowMo = 0;
 let koSlowMoTarget = null;
 
+// Input Configuration
+const KEY_MAP = {
+    p1: {
+        left: ['a', 'ArrowLeft'],
+        right: ['d', 'ArrowRight'],
+        up: ['w', 'ArrowUp'],
+        down: ['s', 'ArrowDown'],
+        attack: ['j', 'KeyJ'],
+        special: ['k', 'KeyK'],
+        pause: ['p', 'KeyP'],
+        restart: ['r', 'KeyR']
+    },
+    p2: {
+        left: ['ArrowLeft'],
+        right: ['ArrowRight'],
+        up: ['ArrowUp'],
+        down: ['ArrowDown'],
+        attack: ['0', 'Numpad0'],
+        special: ['1', 'Numpad1'],
+        pause: ['p', 'KeyP'],
+        restart: ['r', 'KeyR']
+    }
+};
+
+const GAMEPAD_MAP = {
+    left: { axis: 0, threshold: -0.3 },
+    right: { axis: 0, threshold: 0.3 },
+    up: { axis: 1, threshold: -0.3 },
+    down: { axis: 1, threshold: 0.3 },
+    attack: { button: 0 },      // A / Cross
+    special: { button: 1 },     // B / Circle
+    block: { button: 6 },       // LB / L1
+    pause: { button: 9 },       // Start / Options
+    restart: { button: 8 }      // Select / Share
+};
+
+let gamepads = [null, null];
+let gamepadPrevState = [{}, {}];
+
+function pollGamepads() {
+    const gpList = navigator.getGamepads();
+    gamepads[0] = gpList[0] || null;
+    gamepads[1] = gpList[1] || null;
+}
+
+function getGamepadInput(playerIndex) {
+    const gp = gamepads[playerIndex];
+    if (!gp) return null;
+
+    const prev = gamepadPrevState[playerIndex] || {};
+    const curr = {};
+
+    // Axes
+    ['left', 'right', 'up', 'down'].forEach(dir => {
+        const map = GAMEPAD_MAP[dir];
+        const val = gp.axes[map.axis] || 0;
+        curr[dir] = val * (dir === 'left' || dir === 'up' ? -1 : 1) > Math.abs(map.threshold);
+    });
+
+    // Buttons
+    ['attack', 'special', 'block', 'pause', 'restart'].forEach(btn => {
+        const map = GAMEPAD_MAP[btn];
+        const pressed = gp.buttons[map.button]?.pressed || false;
+        curr[btn] = pressed && !prev[btn]; // Edge detection for tap actions
+    });
+
+    gamepadPrevState[playerIndex] = curr;
+    return curr;
+}
+
 // Audio Synthesizer (Web Audio API)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -2461,11 +2531,43 @@ function render() {
 }
 
 function gameLoop() {
+    // Poll gamepads
+    pollGamepads();
+
+    // Update keys from gamepad input
+    if (!inMainMenu && !isPaused && !isCountingDown) {
+        const gp0 = getGamepadInput(0);
+        const gp1 = getGamepadInput(1);
+
+        if (gp0) {
+            // Player 1 gamepad
+            if (gp0.left) keys['a'] = true; else keys['a'] = false;
+            if (gp0.right) keys['d'] = true; else keys['d'] = false;
+            if (gp0.up) keys['w'] = true; else keys['w'] = false;
+            if (gp0.down) keys['s'] = true; else keys['s'] = false;
+            if (gp0.attack) { keys['j'] = true; setTimeout(() => keys['j'] = false, 0); }
+            if (gp0.special) { keys['k'] = true; setTimeout(() => keys['k'] = false, 0); }
+            if (gp0.pause) { togglePause(); }
+            if (gp0.restart) { restartGame(); }
+        }
+
+        if (gp1 && gameMode === "2P") {
+            // Player 2 gamepad
+            if (gp1.left) keys['arrowleft'] = true; else keys['arrowleft'] = false;
+            if (gp1.right) keys['arrowright'] = true; else keys['arrowright'] = false;
+            if (gp1.up) keys['arrowup'] = true; else keys['arrowup'] = false;
+            if (gp1.down) keys['arrowdown'] = true; else keys['arrowdown'] = false;
+            if (gp1.attack) { keys['0'] = true; setTimeout(() => keys['0'] = false, 0); }
+            if (gp1.special) { keys['1'] = true; setTimeout(() => keys['1'] = false, 0); }
+            if (gp1.pause) { togglePause(); }
+            if (gp1.restart) { restartGame(); }
+        }
+    }
+
     // KO Slow-mo handling
     if (koSlowMo > 0) {
         koSlowMo--;
         if (koSlowMo <= 0 && koSlowMoTarget) {
-            // Trigger game over after slow-mo
             const msg = koSlowMoTarget === player ? (gameMode === "1P" ? "ENEMY WIN!" : "PLAYER 2 WIN!") : (gameMode === "1P" ? "PLAYER WIN!" : "PLAYER 1 WIN!");
             statusText.textContent = msg;
             showGameOver(msg);
