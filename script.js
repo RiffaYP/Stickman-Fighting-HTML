@@ -436,6 +436,54 @@ const CHARACTER_CLASSES = {
         projectileColor: "#a855f7",
         knockbackResistance: 0.8,
         juggleDecay: 0.95
+    },
+    mage: {
+        name: "Mage",
+        maxHp: 80,
+        speed: 4,
+        jumpPower: 15,
+        damage: 8,
+        color: "#f97316",
+        lightColor: "#fb923c",
+        shadowColor: "#c2410c",
+        weaponType: "staff",
+        bladeLength: 50,
+        lineWidth: 4,
+        projectileColor: "#f97316",
+        knockbackResistance: 0.9,
+        juggleDecay: 0.9
+    },
+    wrestler: {
+        name: "Wrestler",
+        maxHp: 150,
+        speed: 3,
+        jumpPower: 12,
+        damage: 22,
+        color: "#84cc16",
+        lightColor: "#bef264",
+        shadowColor: "#4d7c0f",
+        weaponType: "gauntlets",
+        bladeLength: 28,
+        lineWidth: 6,
+        projectileColor: "#84cc16",
+        knockbackResistance: 1.6,
+        juggleDecay: 0.85
+    },
+    assassin: {
+        name: "Assassin",
+        maxHp: 70,
+        speed: 8,
+        jumpPower: 20,
+        damage: 9,
+        color: "#ec4899",
+        lightColor: "#f472b6",
+        shadowColor: "#be185d",
+        weaponType: "claws",
+        bladeLength: 30,
+        lineWidth: 3,
+        projectileColor: "#ec4899",
+        knockbackResistance: 0.7,
+        juggleDecay: 0.98
     }
 };
 
@@ -595,7 +643,14 @@ function drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColo
         ctx.stroke();
 
         // Weapon
-        const bladeLen = weaponType === 'greatsword' ? 60 : (weaponType === 'daggers' ? 32 : 45);
+        let bladeLen, lineW;
+        if (weaponType === 'greatsword') { bladeLen = 60; lineW = 8; }
+        else if (weaponType === 'daggers') { bladeLen = 32; lineW = 4; }
+        else if (weaponType === 'staff') { bladeLen = 55; lineW = 4; }
+        else if (weaponType === 'gauntlets') { bladeLen = 25; lineW = 6; }
+        else if (weaponType === 'claws') { bladeLen = 28; lineW = 3; }
+        else { bladeLen = 45; lineW = 5; }
+
         const hx = handX + Math.cos(angle) * 8;
         const hy = handY + Math.sin(angle) * 8;
         const bx = hx + Math.cos(angle) * bladeLen;
@@ -605,7 +660,7 @@ function drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColo
         ctx.strokeStyle = lightColor;
         ctx.shadowColor = shadowColor;
         ctx.shadowBlur = 15;
-        ctx.lineWidth = weaponType === 'greatsword' ? 8 : (weaponType === 'daggers' ? 4 : 5);
+        ctx.lineWidth = lineW;
         ctx.beginPath();
         ctx.moveTo(hx, hy);
         ctx.lineTo(bx, by);
@@ -693,10 +748,10 @@ function drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColo
         ctx.stroke();
     }
 
-    // Back weapon for Shadow
-    if (weaponType === 'daggers' && state !== 'attack') {
+    // Back weapon for Shadow / Assassin / etc.
+    if ((weaponType === 'daggers' || weaponType === 'claws') && state !== 'attack') {
         const angle = -1.8 + (state === 'run' ? Math.sin(progress * Math.PI * 2) * 0.3 : 0);
-        const armLen = 21;
+        const armLen = weaponType === 'claws' ? 18 : 21;
         const lhx = -4 + Math.cos(angle) * armLen;
         const lhy = shoulderY + Math.sin(angle) * armLen;
 
@@ -705,18 +760,18 @@ function drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColo
         ctx.lineTo(lhx, lhy);
         ctx.stroke();
 
-        // Dagger
-        const daggerLen = 22;
+        // Weapon
+        const backLen = weaponType === 'claws' ? 25 : 22;
         const hx = lhx + Math.cos(angle) * 5;
         const hy = lhy + Math.sin(angle) * 5;
-        const bx = hx + Math.cos(angle) * daggerLen;
-        const by = hy + Math.sin(angle) * daggerLen;
+        const bx = hx + Math.cos(angle) * backLen;
+        const by = hy + Math.sin(angle) * backLen;
 
         ctx.save();
         ctx.strokeStyle = lightColor;
         ctx.shadowColor = shadowColor;
         ctx.shadowBlur = 12;
-        ctx.lineWidth = 4;
+        ctx.lineWidth = weaponType === 'claws' ? 3 : 4;
         ctx.beginPath();
         ctx.moveTo(hx, hy);
         ctx.lineTo(bx, by);
@@ -1224,6 +1279,9 @@ btnGameOverMainMenu.addEventListener("click", function () {
 document.getElementById("cardStriker").addEventListener("click", () => selectChar("striker"));
 document.getElementById("cardTitan").addEventListener("click", () => selectChar("titan"));
 document.getElementById("cardShadow").addEventListener("click", () => selectChar("shadow"));
+document.getElementById("cardMage").addEventListener("click", () => selectChar("mage"));
+document.getElementById("cardWrestler").addEventListener("click", () => selectChar("wrestler"));
+document.getElementById("cardAssassin").addEventListener("click", () => selectChar("assassin"));
 
 // Stage Selection Cards
 document.getElementById("cardStageNeon").addEventListener("click", () => selectStage("neon"));
