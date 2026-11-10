@@ -53,6 +53,7 @@ let isCountingDown = false;
 let gameMode = "1P"; // "1P" atau "2P"
 let selectingPlayer = 1; // 1 atau 2
 let selectedEnemyClass = "striker";
+let selectedStage = "neon"; // default stage
 
 // Arena dimensions
 let arenaWidth = 950;
@@ -66,6 +67,7 @@ let screenShake = 0;
 let roundOver = false;
 let roundTimer = 99;
 let roundTimerInterval = null;
+let bgAnimTime = 0;
 
 // Audio Synthesizer (Web Audio API)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -237,6 +239,57 @@ const CHARACTER_CLASSES = {
         projectileColor: "#a855f7",
         knockbackResistance: 0.8,
         juggleDecay: 0.95
+    }
+};
+
+const STAGES = {
+    neon: {
+        name: "NEON CITY",
+        skyColors: ["#0b0f1a", "#111827", "#030712"],
+        groundColor: "#111827",
+        neonColor: "#facc15",
+        gridColor: "rgba(59, 130, 246, 0.06)",
+        parallaxLayers: [
+            { color: "rgba(59, 130, 246, 0.04)", speed: 0.05, yStart: 0.1 },
+            { color: "rgba(168, 85, 247, 0.03)", speed: 0.1, yStart: 0.3 },
+        ],
+        ambientParticles: { color: "#60a5fa", count: 2 },
+    },
+    dojo: {
+        name: "ANCIENT DOJO",
+        skyColors: ["#1c1917", "#292524", "#1c1917"],
+        groundColor: "#3d2f22",
+        neonColor: "#f97316",
+        gridColor: "rgba(245, 158, 11, 0.05)",
+        parallaxLayers: [
+            { color: "rgba(245, 158, 11, 0.04)", speed: 0.05, yStart: 0.1 },
+            { color: "rgba(120, 53, 15, 0.03)", speed: 0.1, yStart: 0.4 },
+        ],
+        ambientParticles: { color: "#f97316", count: 3 },
+    },
+    void: {
+        name: "VOID ARENA",
+        skyColors: ["#050505", "#0f0f0f", "#000000"],
+        groundColor: "#1a1a1a",
+        neonColor: "#a855f7",
+        gridColor: "rgba(168, 85, 247, 0.06)",
+        parallaxLayers: [
+            { color: "rgba(168, 85, 247, 0.06)", speed: 0.08, yStart: 0.05 },
+            { color: "rgba(236, 72, 153, 0.04)", speed: 0.15, yStart: 0.25 },
+        ],
+        ambientParticles: { color: "#a855f7", count: 4 },
+    },
+    sunset: {
+        name: "SUNSET ROOFTOP",
+        skyColors: ["#7c2d12", "#9a3412", "#c2410c"],
+        groundColor: "#3d2f22",
+        neonColor: "#fbbf24",
+        gridColor: "rgba(251, 191, 36, 0.05)",
+        parallaxLayers: [
+            { color: "rgba(251, 191, 36, 0.05)", speed: 0.04, yStart: 0.15 },
+            { color: "rgba(234, 88, 12, 0.04)", speed: 0.08, yStart: 0.35 },
+        ],
+        ambientParticles: { color: "#fbbf24", count: 3 },
     }
 };
 
@@ -617,6 +670,12 @@ document.getElementById("cardStriker").addEventListener("click", () => selectCha
 document.getElementById("cardTitan").addEventListener("click", () => selectChar("titan"));
 document.getElementById("cardShadow").addEventListener("click", () => selectChar("shadow"));
 
+// Stage Selection Cards
+document.getElementById("cardStageNeon").addEventListener("click", () => selectStage("neon"));
+document.getElementById("cardStageDojo").addEventListener("click", () => selectStage("dojo"));
+document.getElementById("cardStageVoid").addEventListener("click", () => selectStage("void"));
+document.getElementById("cardStageSunset").addEventListener("click", () => selectStage("sunset"));
+
 btnBackToMenu.addEventListener("click", () => {
     charSelectMenu.classList.add("hidden");
     mainMenu.classList.remove("hidden");
@@ -642,6 +701,16 @@ function selectChar(className) {
         inMainMenu = false;
         restartGame();
     }
+}
+
+function selectStage(stageName) {
+    selectedStage = stageName;
+    document.querySelectorAll(".stage-card").forEach(card => {
+        card.style.borderColor = "rgba(255, 255, 255, 0.1)";
+    });
+    const stage = STAGES[stageName];
+    const cardId = `cardStage${stageName.charAt(0).toUpperCase() + stageName.slice(1)}`;
+    document.getElementById(cardId).style.borderColor = stage.neonColor;
 }
 
 function updatePlayerMovement() {
@@ -1449,43 +1518,70 @@ function drawSwordTrail(char, isPlayer) {
 }
 
 function drawBackground() {
-    // Background gradient
+    const stage = STAGES[selectedStage];
+    const groundY = arenaHeight - groundHeight;
+
+    // Background sky gradient
     const skyGrad = ctx.createLinearGradient(0, 0, 0, arenaHeight);
-    skyGrad.addColorStop(0, "#0b0f1a");
-    skyGrad.addColorStop(1, "#111827");
+    stage.skyColors.forEach((color, i) => {
+        skyGrad.addColorStop(i / (stage.skyColors.length - 1), color);
+    });
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, arenaWidth, arenaHeight);
 
+    // Parallax background layers
+    bgAnimTime += 0.008;
+    stage.parallaxLayers.forEach(layer => {
+        const layerY = arenaHeight * layer.yStart + Math.sin(bgAnimTime * layer.speed + layer.yStart * 10) * 30;
+        const layerGrad = ctx.createRadialGradient(
+            arenaWidth / 2, layerY, 0,
+            arenaWidth / 2, layerY, arenaWidth * 0.8
+        );
+        layerGrad.addColorStop(0, layer.color);
+        layerGrad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = layerGrad;
+        ctx.fillRect(0, 0, arenaWidth, arenaHeight);
+    });
+
     // Background grid lines
     ctx.save();
-    ctx.strokeStyle = "rgba(59, 130, 246, 0.06)";
+    ctx.strokeStyle = stage.gridColor;
     ctx.lineWidth = 1;
 
-    for (let y = 60; y < arenaHeight - groundHeight; y += 45) {
+    for (let y = 60; y < groundY; y += 45) {
+        const offset = Math.sin(bgAnimTime * 0.5 + y * 0.02) * 5;
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(arenaWidth, y);
+        ctx.moveTo(0, y + offset);
+        ctx.lineTo(arenaWidth, y + offset);
         ctx.stroke();
     }
 
-    // Title watermark
-    ctx.font = "bold 36px Orbitron";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+    // Stage name watermark
+    ctx.font = "bold 28px Orbitron";
+    ctx.fillStyle = stage.neonColor + "33"; // 20% opacity
     ctx.textAlign = "center";
-    ctx.fillText("NEON FIGHT ARENA", arenaWidth / 2, 90);
+    ctx.fillText(stage.name, arenaWidth / 2, 70);
 
-    // Neon ground
-    const groundY = arenaHeight - groundHeight;
+    // Ambient particles
+    if (Math.random() < 0.03 * stage.ambientParticles.count) {
+        const x = Math.random() * arenaWidth;
+        const y = Math.random() * (groundY - 50);
+        const size = 1 + Math.random() * 2;
+        const life = 60 + Math.random() * 60;
+        particles.push(new Particle(x, y, stage.ambientParticles.color, 0, -0.2, size, life));
+    }
+
+    // Ground
     const groundGrad = ctx.createLinearGradient(0, groundY, 0, arenaHeight);
-    groundGrad.addColorStop(0, "#111827");
+    groundGrad.addColorStop(0, stage.groundColor);
     groundGrad.addColorStop(1, "#070b12");
     ctx.fillStyle = groundGrad;
     ctx.fillRect(0, groundY, arenaWidth, groundHeight);
 
     // Neon ground line
-    ctx.strokeStyle = "#facc15";
+    ctx.strokeStyle = stage.neonColor;
     ctx.shadowBlur = 12;
-    ctx.shadowColor = "#eab308";
+    ctx.shadowColor = stage.neonColor;
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(0, groundY);
@@ -1494,7 +1590,7 @@ function drawBackground() {
 
     // Perspective lines
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = "rgba(250, 204, 21, 0.12)";
+    ctx.strokeStyle = stage.neonColor + "33";
     ctx.lineWidth = 1;
     const gridSpacing = 60;
     for (let x = -120; x < arenaWidth + 120; x += gridSpacing) {
