@@ -266,6 +266,178 @@ window.addEventListener('resize', () => {
     initTouchControls();
 });
 
+// Asset Pipeline
+class AssetManager {
+    constructor() {
+        this.images = new Map();
+        this.audio = new Map();
+        this.spriteAtlases = new Map();
+        this.loadingQueue = [];
+        this.loadedCount = 0;
+        this.totalCount = 0;
+        this.onProgress = null;
+        this.onComplete = null;
+    }
+
+    // Load single image
+    loadImage(key, url) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                this.images.set(key, img);
+                resolve(img);
+            };
+            img.onerror = reject;
+            img.src = url;
+        });
+    }
+
+    // Load sprite atlas (image + JSON metadata)
+    loadSpriteAtlas(key, imageUrl, jsonUrl) {
+        return Promise.all([
+            this.loadImage(key, imageUrl),
+            fetch(jsonUrl).then(r => r.json())
+        ]).then(([img, metadata]) => {
+            this.spriteAtlases.set(key, { image: img, metadata });
+            return { image: img, metadata };
+        });
+    }
+
+    // Load audio file
+    loadAudio(key, url) {
+        return fetch(url)
+            .then(r => r.arrayBuffer())
+            .then(data => audioCtx.decodeAudioData(data))
+            .then(buffer => {
+                this.audio.set(key, buffer);
+                return buffer;
+            });
+    }
+
+    // Load audio sprite (single file with multiple sounds + JSON timing)
+    loadAudioSprite(key, audioUrl, jsonUrl) {
+        return Promise.all([
+            this.loadAudio(key + '_buffer', audioUrl),
+            fetch(jsonUrl).then(r => r.json())
+        ]).then(([buffer, metadata]) => {
+            this.audio.set(key, { buffer, metadata });
+            return { buffer, metadata };
+        });
+    }
+
+    // Batch load multiple assets
+    loadManifest(manifest) {
+        this.loadingQueue = manifest;
+        this.totalCount = manifest.length;
+        this.loadedCount = 0;
+
+        const promises = manifest.map(asset => {
+            let promise;
+            switch (asset.type) {
+                case 'image':
+                    promise = this.loadImage(asset.key, asset.url);
+                    break;
+                case 'atlas':
+                    promise = this.loadSpriteAtlas(asset.key, asset.imageUrl, asset.jsonUrl);
+                    break;
+                case 'audio':
+                    promise = this.loadAudio(asset.key, asset.url);
+                    break;
+                case 'audioSprite':
+                    promise = this.loadAudioSprite(asset.key, asset.audioUrl, asset.jsonUrl);
+                    break;
+            }
+            return promise.then(() => {
+                this.loadedCount++;
+                if (this.onProgress) this.onProgress(this.loadedCount, this.totalCount, asset.key);
+            });
+        });
+
+        return Promise.all(promises).then(() => {
+            if (this.onComplete) this.onComplete();
+        });
+    }
+
+    getImage(key) { return this.images.get(key); }
+    getAudio(key) { return this.audio.get(key); }
+    getAtlas(key) { return this.spriteAtlases.get(key); }
+
+    // Play audio sprite
+    playAudioSprite(key, spriteName, volume = 1.0) {
+        const asset = this.audio.get(key);
+        if (!asset || !asset.metadata) return;
+
+        const sprite = asset.metadata.sprites[spriteName];
+        if (!sprite) return;
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = asset.buffer;
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = volume;
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        source.start(0, sprite.start, sprite.duration);
+        return source;
+    }
+
+    // Draw sprite from atlas
+    drawSprite(ctx, atlasKey, spriteName, x, y, w, h, flipped = false) {
+        const atlas = this.spriteAtlases.get(atlasKey);
+        if (!atlas) return;
+
+        const sprite = atlas.metadata.frames[spriteName];
+        if (!sprite) return;
+
+        ctx.save();
+        if (flipped) {
+            ctx.scale(-1, 1);
+            ctx.drawImage(
+                atlas.image,
+                sprite.x, sprite.y, sprite.w, sprite.h,
+                -x - w, y, w, h
+            );
+        } else {
+            ctx.drawImage(
+                atlas.image,
+                sprite.x, sprite.y, sprite.w, sprite.h,
+                x, y, w, h
+            );
+        }
+        ctx.restore();
+    }
+}
+
+const assetManager = new AssetManager();
+
+// Preload essential assets on first interaction
+function preloadAssets() {
+    // Example manifest - replace with actual asset URLs when available
+    const manifest = [
+        // { type: 'image', key: 'bg_neon', url: 'assets/bg_neon.png' },
+        // { type: 'atlas', key: 'striker', imageUrl: 'assets/striker.png', jsonUrl: 'assets/striker.json' },
+        // { type: 'audio', key: 'hit', url: 'assets/hit.ogg' },
+        // { type: 'audioSprite', key: 'sfx', audioUrl: 'assets/sfx.ogg', jsonUrl: 'assets/sfx.json' }
+    ];
+
+    if (manifest.length > 0) {
+        assetManager.onProgress = (loaded, total, key) => {
+            console.log(`Loading: ${key} (${loaded}/${total})`);
+        };
+        assetManager.onComplete = () => {
+            console.log('All assets loaded!');
+        };
+        assetManager.loadManifest(manifest);
+    }
+}
+
+// Initialize asset loading on first user interaction
+document.addEventListener('click', () => {
+    preloadAssets();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}, { once: true });
+
 // Audio Synthesizer (Web Audio API)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
