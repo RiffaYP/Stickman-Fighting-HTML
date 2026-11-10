@@ -103,14 +103,6 @@ h1 {
     font-weight: bold;
 }
 
-#statusText {
-    font-family: 'Orbitron', sans-serif;
-    background-color: #111827;
-    padding: 10px;
-    border: 2px solid white;
-    border-radius: 10px;
-}
-
 .arena {
     position: relative;
     width: 100%;

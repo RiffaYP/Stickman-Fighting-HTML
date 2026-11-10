@@ -253,6 +253,7 @@ const player = {
     isBlocking: false,
     isShooting: false,
     hitTimer: 0,
+    isHitstun: 0,
     animTime: 0,
     attackStartTime: 0,
     swordTrail: [],
@@ -276,6 +277,7 @@ const enemy = {
     isBlocking: false,
     isShooting: false,
     hitTimer: 0,
+    isHitstun: 0,
     animTime: 0,
     attackStartTime: 0,
     blockingTimer: 0,
@@ -773,6 +775,12 @@ function updateEnemyPlayerMovement() {
             spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
         }
     }
+
+    if (enemy.isBlocking) enemy.velocityX = 0;
+    enemy.velocityX *= enemy.isMoving ? 0.82 : 0.68;
+    enemy.velocityX = Math.max(-enemy.speed, Math.min(enemy.speed, enemy.velocityX));
+    enemy.x += enemy.velocityX;
+    enemy.animTime += enemy.isMoving ? Math.abs(enemy.velocityX) * 0.045 : 0.035;
 
     limitPosition(enemy);
 
@@ -1822,9 +1830,7 @@ function restartGame() {
     player.isMoving = false;
 
     // Recalculate dimensions
-    const rect = arena.getBoundingClientRect();
-    arenaWidth = rect.width || 950;
-    arenaHeight = rect.height || 450;
+    resizeCanvas();
 
     enemy.x = arenaWidth - 160;
     enemy.y = 0;
