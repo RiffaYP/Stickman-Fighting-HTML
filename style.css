@@ -536,21 +536,6 @@ h1 {
     box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
 }
 
-#cardMage:hover {
-    border-color: #f97316;
-    box-shadow: 0 0 20px rgba(249, 115, 22, 0.4);
-}
-
-#cardWrestler:hover {
-    border-color: #84cc16;
-    box-shadow: 0 0 20px rgba(132, 204, 22, 0.4);
-}
-
-#cardAssassin:hover {
-    border-color: #ec4899;
-    box-shadow: 0 0 20px rgba(236, 72, 153, 0.4);
-}
-
 .char-preview-box {
     display: flex;
     flex-direction: column;
@@ -579,21 +564,6 @@ h1 {
 .purple-glow {
     background-color: #a855f7;
     box-shadow: 0 0 15px #a855f7;
-}
-
-.orange-glow {
-    background-color: #f97316;
-    box-shadow: 0 0 15px #f97316;
-}
-
-.lime-glow {
-    background-color: #84cc16;
-    box-shadow: 0 0 15px #84cc16;
-}
-
-.pink-glow {
-    background-color: #ec4899;
-    box-shadow: 0 0 15px #ec4899;
 }
 
 .char-card h3 {

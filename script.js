@@ -1451,9 +1451,6 @@ btnGameOverMainMenu.addEventListener("click", function () {
 document.getElementById("cardStriker").addEventListener("click", () => selectChar("striker"));
 document.getElementById("cardTitan").addEventListener("click", () => selectChar("titan"));
 document.getElementById("cardShadow").addEventListener("click", () => selectChar("shadow"));
-document.getElementById("cardMage").addEventListener("click", () => selectChar("mage"));
-document.getElementById("cardWrestler").addEventListener("click", () => selectChar("wrestler"));
-document.getElementById("cardAssassin").addEventListener("click", () => selectChar("assassin"));
 
 // Stage Selection Cards
 document.getElementById("cardStageNeon").addEventListener("click", () => selectStage("neon"));
