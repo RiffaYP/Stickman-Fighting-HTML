@@ -1363,7 +1363,7 @@ document.addEventListener("keydown", function (event) {
     const key = event.key.toLowerCase();
     const code = event.code;
 
-    if (key === "p") {
+    if (key === "p" || key === "escape") {
         if (gameRunning && !isCountingDown) {
             togglePause();
         }
