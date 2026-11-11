@@ -24,6 +24,7 @@ const pauseMenu = document.getElementById("pauseMenu");
 const btnResume = document.getElementById("btnResume");
 const btnRestart = document.getElementById("btnRestart");
 const btnMainMenu = document.getElementById("btnMainMenu");
+const btnPause = document.getElementById("btnPause");
 
 // Character selection menu overlays
 const charSelectMenu = document.getElementById("charSelectMenu");
@@ -1364,6 +1365,7 @@ document.addEventListener("keydown", function (event) {
     const code = event.code;
 
     if (key === "p" || key === "escape") {
+        event.preventDefault();
         if (gameRunning && !isCountingDown) {
             togglePause();
         }
@@ -1444,6 +1446,12 @@ btnCloseModal.addEventListener("click", function () {
 
 btnResume.addEventListener("click", function () {
     togglePause();
+});
+
+btnPause.addEventListener("click", function () {
+    if (gameRunning && !isCountingDown) {
+        togglePause();
+    }
 });
 
 btnRestart.addEventListener("click", function () {
