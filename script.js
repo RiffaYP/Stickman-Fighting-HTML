@@ -2209,8 +2209,13 @@ function updateHealthBars() {
     if (!player.displayHp) player.displayHp = player.hp;
     if (!enemy.displayHp) enemy.displayHp = enemy.hp;
 
-    player.displayHp += (player.targetHp - player.displayHp) * 0.15;
-    enemy.displayHp += (enemy.targetHp - enemy.displayHp) * 0.15;
+    // Snap to 0 immediately when dead (avoid visual desync)
+    if (player.hp <= 0) player.displayHp = 0;
+    if (enemy.hp <= 0) enemy.displayHp = 0;
+    else {
+        player.displayHp += (player.targetHp - player.displayHp) * 0.15;
+        enemy.displayHp += (enemy.targetHp - enemy.displayHp) * 0.15;
+    }
 
     const pHPPercent = Math.max(0, (player.displayHp / pMaxHp) * 100);
     const eHPPercent = Math.max(0, (enemy.displayHp / eMaxHp) * 100);
@@ -2890,9 +2895,9 @@ function render() {
     // 5. Draw Projectiles
     drawProjectiles();
 
-    // 6. Draw Fighters (using sprite system)
-    drawSprite(player, true);
-    drawSprite(enemy, false);
+    // 6. Draw Fighters (using procedural drawing)
+    drawFighter(player, true);
+    drawFighter(enemy, false);
 
     // 7. Update and Draw Particles
     for (let i = particles.length - 1; i >= 0; i--) {
