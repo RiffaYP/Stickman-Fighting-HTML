@@ -185,6 +185,12 @@ h1 {
     animation: menuFadeIn 0.5s ease-out;
 }
 
+/* Character select needs wider container for 6 cards */
+.menu-content.select-content {
+    max-width: 95% !important;
+    padding: 30px 20px !important;
+}
+
 @keyframes menuFadeIn {
     from {
         opacity: 0;
@@ -484,14 +490,6 @@ h1 {
 }
 
 /* Character Select Screen */
-.select-content {
-    max-width: 95% !important;
-    width: 95% !important;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: 30px 20px !important;
-}
-
 .char-cards {
     display: flex;
     justify-content: center;

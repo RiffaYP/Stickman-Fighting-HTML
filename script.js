@@ -1004,6 +1004,33 @@ function drawSprite(char, isPlayer) {
     }
 
     ctx.drawImage(anim.canvas, sx, sy, frameW, frameH, -frameW / 2, -frameH, frameW, frameH);
+
+    // Draw shield overlay when blocking (even with sprites)
+    if (char.isBlocking) {
+        ctx.save();
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = char.shadowColor;
+        ctx.strokeStyle = char.lightColor;
+
+        const shieldRadius = char.height * 0.55;
+        const shieldGrad = ctx.createRadialGradient(0, -char.height / 2, 10, 0, -char.height / 2, shieldRadius);
+        shieldGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
+        shieldGrad.addColorStop(1, isPlayer ? "rgba(59, 130, 246, 0.15)" : "rgba(239, 68, 68, 0.15)");
+        ctx.fillStyle = shieldGrad;
+
+        ctx.beginPath();
+        ctx.arc(0, -char.height / 2, shieldRadius, -Math.PI * 0.65, Math.PI * 0.65);
+        ctx.lineTo(0, -char.height / 2);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, -char.height / 2, shieldRadius, -Math.PI * 0.65, Math.PI * 0.65);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     ctx.restore();
 }
 
