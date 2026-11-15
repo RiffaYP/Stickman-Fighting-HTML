@@ -1,4 +1,4 @@
-# Neon Fighter - Simple Fighting Game
+# Neon Fighter - 2D Fighting Game
 
 A browser-based 2D fighting game built with vanilla HTML5 Canvas, CSS3, and JavaScript (ES6+). No frameworks, no build step — just open `index.html` and play.
 
@@ -63,7 +63,7 @@ A browser-based 2D fighting game built with vanilla HTML5 Canvas, CSS3, and Java
 
 ### Mobile Touch
 - **Left side** — Virtual joystick for movement
-- **Right side** — Action buttons (Attack, Special, Block, Jump)
+- **Right side** — Action buttons (Attack, EX Skill, Block, Jump)
 - Auto-shows on screens ≤ 768px
 
 ---
@@ -182,7 +182,7 @@ MIT License — free to use, modify, distribute.
 
 - Fonts: **Orbitron** & **Inter** (Google Fonts)
 - Sound: Synthesized via Web Audio API (no external assets)
-- Sprites: Procedurally generated at runtime
+- Fighters: Procedurally drawn as vectors at runtime (no image assets)
 
 ---
 
