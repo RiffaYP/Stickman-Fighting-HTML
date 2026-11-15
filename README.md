@@ -10,12 +10,15 @@ A browser-based 2D fighting game built with vanilla HTML5 Canvas, CSS3, and Java
 
 - **6 Unique Characters** — Striker, Titan, Shadow, Mage, Wrestler, Assassin with distinct stats, weapons, and playstyles
 - **4 Parallax Stages** — Neon City, Ancient Dojo, Void Arena, Sunset Rooftop with animated backgrounds
-- **Physics-Based Combat** — Gravity, knockback, air juggles (max 3 hits), hit pause, screen shake
-- **EX Meter System** — Build meter by attacking/blocking, spend 30 EX for Hadouken projectile
+- **Best of 3 Rounds** — Match decided by 2 round wins; round-win dots shown in the HUD
+- **Physics-Based Combat** — Asymmetric gravity (faster fall), snappy braking, landing squash, knockback, air juggles (max 3 hits), hit pause, screen shake
+- **Class-Specific EX Skills** — Spend 30 EX on a unique move (see below)
+- **Guard Crush** — Holding block >3s shatters the shield and staggers you for ~1.25s
+- **Dash** — Double-tap a movement key for a quick burst
 - **Smart AI** — Adjustable difficulty (easier in 1P mode), reactive blocking, state-based behavior
 - **Multiple Input Methods** — Keyboard, Dual Gamepad (Gamepad API), Mobile Touch Controls
 - **Polished UI** — Smooth HP/EX bars, damage numbers, KO slow-mo, low-HP pulse warning
-- **Procedural Sprites** — All animations generated at runtime (idle, run, jump, attack, hit, block, shoot, death)
+- **Procedural Vector Fighters** — All fighters drawn at runtime with per-class weapon models (idle, run, jump, attack, hit, block, shoot)
 
 ---
 
@@ -26,10 +29,11 @@ A browser-based 2D fighting game built with vanilla HTML5 Canvas, CSS3, and Java
 |--------|-----|
 | Move Left | `A` |
 | Move Right | `D` |
+| Dash | Double-tap `A` / `D` |
 | Jump | `W` |
 | Block | `S` (hold) |
 | Attack | `J` |
-| Hadouken (EX 30) | `K` |
+| EX Skill (30 EX) | `K` |
 | Pause | `P` / `ESC` |
 | Restart | `R` |
 
@@ -38,10 +42,11 @@ A browser-based 2D fighting game built with vanilla HTML5 Canvas, CSS3, and Java
 |--------|-----|
 | Move Left | `←` |
 | Move Right | `→` |
+| Dash | Double-tap `←` / `→` |
 | Jump | `↑` |
 | Block | `↓` (hold) |
 | Attack | `0` (Numpad) |
-| Hadouken (EX 30) | `1` (Numpad) |
+| EX Skill (30 EX) | `1` (Numpad) |
 
 ### Gamepad (Dual Supported)
 | Action | Button |
@@ -49,7 +54,7 @@ A browser-based 2D fighting game built with vanilla HTML5 Canvas, CSS3, and Java
 | Move | Left Stick |
 | Jump / Block | Left Stick Up / Down |
 | Attack | **A / Cross** (Button 0) |
-| Hadouken | **B / Circle** (Button 1) |
+| EX Skill | **B / Circle** (Button 1) |
 | Block | **LB / L1** (Button 6) |
 | Pause | **Start / Options** (Button 9) |
 | Restart | **Select / Share** (Button 8) |
@@ -110,7 +115,7 @@ python3 -m http.server 8000
 
 - **HTML5 Canvas** — 2D rendering
 - **CSS3** — Flexbox, Grid, animations, backdrop-filter, responsive design
-- **Vanilla JavaScript (ES6+)** — Game loop, physics, input, AI, procedural sprite generation
+- **Vanilla JavaScript (ES6+)** — Game loop, physics, input, AI, procedural vector fighters
 - **Web Audio API** — Synthesized sound effects (slash, hit, block, jump, projectile, win)
 - **Gamepad API** — Dual controller support
 - **Touch Events** — Mobile virtual controls
@@ -125,7 +130,8 @@ No dependencies, no build tools, no transpilation.
 .
 ├── index.html      # Main HTML structure, menus, HUD, touch controls
 ├── style.css       # All styling (responsive, animations, themes)
-├── script.js       # Game engine (physics, AI, rendering, input, sprites)
+├── script.js       # Game engine (physics, AI, rendering, input, fighters)
+├── test.js         # Assert-based self-check for gameplay logic (node test.js)
 └── README.md       # This file
 ```
 
@@ -135,11 +141,24 @@ No dependencies, no build tools, no transpilation.
 
 - **Health** — Depletes on hit; chip damage (1 HP) on block
 - **EX Meter** — Passive gain (0.05/frame) + bonus on hit/block; max 100
-- **Hadouken** — Costs 30 EX, projectile with juggle physics
+- **Class EX Skill** — Costs 30 EX, unique per weapon (see table below)
+- **Guard Crush** — Blocking continuously for 3s (180 frames) breaks your guard: shield shatters, 1.25s stagger. Shield glows red as a warning after 2s
+- **Dash** — Double-tap left/right within 260ms for a fast burst
 - **Air Juggles** — Max 3 hits, decaying launch height
 - **Hit Pause** — 6-30 frames freeze on impact for impact feel
-- **KO Slow-Mo** — 1.5s dramatic slowdown before game over
+- **KO Slow-Mo** — Dramatic slowdown before each round result
+- **Best of 3** — First to 2 round wins takes the match
 - **Round Timer** — 99 seconds, time-up decides by remaining HP
+
+### Class EX Skills (30 EX each)
+| Class | Weapon | EX Skill | Effect |
+|-------|--------|----------|--------|
+| **Striker** | Saber | Laser Wave | Fast piercing projectile (18 dmg) |
+| **Titan** | Greatsword | Ground Shockwave | Low ground wave, heavy chip/knockback (22 dmg) |
+| **Shadow** | Twin Daggers | Shadow Step | Teleport behind foe + critical backstab (18 dmg) |
+| **Mage** | Staff | Triple Arcane Bolt | 3 staggered magic orbs (8 dmg each) |
+| **Wrestler** | Gauntlets | Command Grab | Unblockable rush tackle + slam (24 dmg) |
+| **Assassin** | Claws | Sonic Claw Dash | Fast dash-through slash + air launch (20 dmg) |
 
 ---
 

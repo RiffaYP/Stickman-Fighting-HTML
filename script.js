@@ -63,6 +63,8 @@ let selectedStage = "neon"; // default stage
 let playerRoundsWon = 0;
 let enemyRoundsWon = 0;
 let currentRound = 1;
+let roundEpoch = 0;
+let activeTimeouts = [];
 const tapTracker = {
     p1: { key: null, time: 0 },
     p2: { key: null, time: 0 }
@@ -84,6 +86,21 @@ let roundTimerInterval = null;
 let bgAnimTime = 0;
 let koSlowMo = 0;
 let koSlowMoTarget = null;
+
+function scheduleTimeout(fn, delay) {
+    const id = setTimeout(() => {
+        const idx = activeTimeouts.indexOf(id);
+        if (idx !== -1) activeTimeouts.splice(idx, 1);
+        fn();
+    }, delay);
+    activeTimeouts.push(id);
+    return id;
+}
+
+function clearAllTimeouts() {
+    activeTimeouts.forEach(id => clearTimeout(id));
+    activeTimeouts = [];
+}
 
 // Input Configuration
 const KEY_MAP = {
@@ -857,7 +874,7 @@ function startCountdown(callback, roundTitle) {
             countdownText.style.animation = null;
 
             count--;
-            setTimeout(runNumbers, 850);
+            scheduleTimeout(runNumbers, 850);
         } else {
             countdownText.textContent = "MULAI!";
             statusText.textContent = "FIGHT!";
@@ -867,7 +884,7 @@ function startCountdown(callback, roundTitle) {
             countdownText.offsetHeight; // trigger reflow
             countdownText.style.animation = null;
 
-            setTimeout(() => {
+            scheduleTimeout(() => {
                 countdownOverlay.classList.add("hidden");
                 isCountingDown = false;
                 if (callback) callback();
@@ -879,7 +896,7 @@ function startCountdown(callback, roundTitle) {
         countdownText.textContent = roundTitle;
         statusText.textContent = roundTitle;
         playCountdownSound();
-        setTimeout(runNumbers, 900);
+        scheduleTimeout(runNumbers, 900);
     } else {
         runNumbers();
     }
@@ -1505,8 +1522,8 @@ function playerAttack() {
         checkWinner();
     }
 
-    setTimeout(() => { player.isAttacking = false; }, 180);
-    setTimeout(() => { player.attackCooldown = false; }, 450);
+    scheduleTimeout(() => { player.isAttacking = false; }, 180);
+    scheduleTimeout(() => { player.attackCooldown = false; }, 450);
 }
 
 function enemyAttack() {
@@ -1596,8 +1613,8 @@ function enemyAttack() {
     const duration = gameMode === "2P" ? 180 : 200;
     const cooldown = gameMode === "2P" ? 450 : 900;
 
-    setTimeout(() => { enemy.isAttacking = false; }, duration);
-    setTimeout(() => { enemy.attackCooldown = false; }, cooldown);
+    scheduleTimeout(() => { enemy.isAttacking = false; }, duration);
+    scheduleTimeout(() => { enemy.attackCooldown = false; }, cooldown);
 }
 
 function executeExSkill(user, target) {
@@ -1610,6 +1627,8 @@ function executeExSkill(user, target) {
     updateHealthBars();
 
     const wType = user.weaponType;
+    const myEpoch = roundEpoch;
+    const stillValid = () => gameRunning && !roundOver && myEpoch === roundEpoch;
 
     if (wType === "saber") {
         // Striker: Piercing Laser Blade Wave
@@ -1659,8 +1678,8 @@ function executeExSkill(user, target) {
         // Mage: Triple Arcane Bolts (Burst of 3 magic orbs)
         spawnDust(user.x + user.width / 2, arenaHeight - groundHeight);
         for (let b = 0; b < 3; b++) {
-            setTimeout(() => {
-                if (!gameRunning || roundOver) return;
+            scheduleTimeout(() => {
+                if (!stillValid()) return;
                 const pX = user.x + (user.facing === 1 ? user.width + 10 : -20);
                 const pY = (arenaHeight - groundHeight) - user.y - user.height * (0.45 + (b - 1) * 0.18);
                 projectiles.push({
@@ -1678,8 +1697,8 @@ function executeExSkill(user, target) {
         screenShake = 8;
         spawnDust(user.x + user.width / 2, arenaHeight - groundHeight);
 
-        setTimeout(() => {
-            if (!gameRunning || roundOver) return;
+        scheduleTimeout(() => {
+            if (!stillValid()) return;
             const dist = getDistance(user, target);
             if (dist < 100) {
                 target.hp = Math.max(0, target.hp - 24);
@@ -1704,8 +1723,8 @@ function executeExSkill(user, target) {
         user.velocityX = user.facing * 18;
         spawnImpactDust(user.x + user.width / 2, arenaHeight - groundHeight, user.lightColor);
 
-        setTimeout(() => {
-            if (!gameRunning || roundOver) return;
+        scheduleTimeout(() => {
+            if (!stillValid()) return;
             const dist = getDistance(user, target);
             if (dist < 110) {
                 target.hp = Math.max(0, target.hp - 20);
@@ -1727,7 +1746,10 @@ function executeExSkill(user, target) {
         }, 100);
     }
 
-    setTimeout(() => { user.isShooting = false; }, 260);
+    scheduleTimeout(() => {
+        if (!stillValid()) return;
+        user.isShooting = false;
+    }, 260);
 }
 
 function playerShoot() {
@@ -1889,7 +1911,7 @@ function handleRoundEnd() {
     } else {
         const msg = `${winnerLabel} WINS ROUND ${currentRound}!`;
         statusText.textContent = msg;
-        setTimeout(() => {
+        scheduleTimeout(() => {
             startNextRound();
         }, 1500);
     }
@@ -1897,12 +1919,19 @@ function handleRoundEnd() {
 
 function startNextRound() {
     currentRound++;
+    roundEpoch++;
+    clearAllTimeouts();
+
     player.hp = player.maxHp;
     player.targetHp = player.maxHp;
     player.displayHp = player.maxHp;
+    player.ex = 0;
+    player.displayEx = 0;
     enemy.hp = enemy.maxHp;
     enemy.targetHp = enemy.maxHp;
     enemy.displayHp = enemy.maxHp;
+    enemy.ex = 0;
+    enemy.displayEx = 0;
 
     player.x = 120;
     player.y = 0;
@@ -1916,7 +1945,12 @@ function startNextRound() {
     player.blockHoldTime = 0;
     player.isAttacking = false;
     player.isShooting = false;
+    player.isJumping = false;
     player.attackCooldown = false;
+    player.hitTimer = 0;
+    player.landingRecovery = 0;
+    player.swordTrail = [];
+    player.isMoving = false;
 
     enemy.x = arenaWidth - 160;
     enemy.y = 0;
@@ -1930,8 +1964,13 @@ function startNextRound() {
     enemy.blockHoldTime = 0;
     enemy.isAttacking = false;
     enemy.isShooting = false;
+    enemy.isJumping = false;
     enemy.attackCooldown = false;
     enemy.blockingTimer = 0;
+    enemy.hitTimer = 0;
+    enemy.landingRecovery = 0;
+    enemy.swordTrail = [];
+    enemy.isMoving = false;
     enemy.aiState = "chase";
     enemy.aiStateTimer = 0;
 
@@ -2777,6 +2816,8 @@ function restartGame() {
     playerRoundsWon = 0;
     enemyRoundsWon = 0;
     currentRound = 1;
+    roundEpoch++;
+    clearAllTimeouts();
     updateRoundDots();
 
     // Assign classes
@@ -2799,6 +2840,7 @@ function restartGame() {
     player.targetHp = player.maxHp;
     player.displayHp = player.maxHp;
     player.ex = 0;
+    player.displayEx = 0;
     player.facing = 1;
     player.isJumping = false;
     player.isAttacking = false;
@@ -2811,6 +2853,7 @@ function restartGame() {
     player.isJuggling = false;
     player.juggleCount = 0;
     player.animTime = 0;
+    player.landingRecovery = 0;
     player.swordTrail = [];
     player.isMoving = false;
 
@@ -2825,6 +2868,7 @@ function restartGame() {
     enemy.targetHp = enemy.maxHp;
     enemy.displayHp = enemy.maxHp;
     enemy.ex = 0;
+    enemy.displayEx = 0;
     enemy.facing = -1;
     enemy.isJumping = false;
     enemy.isAttacking = false;
@@ -2837,6 +2881,7 @@ function restartGame() {
     enemy.isJuggling = false;
     enemy.juggleCount = 0;
     enemy.animTime = 0;
+    enemy.landingRecovery = 0;
     enemy.blockingTimer = 0;
     enemy.swordTrail = [];
     enemy.isMoving = false;
