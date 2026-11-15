@@ -41,4 +41,27 @@ function calcDashVelocity(key, baseSpeed) {
 assert.strictEqual(calcDashVelocity('a', 5), -11.5);
 assert.strictEqual(calcDashVelocity('d', 5), 11.5);
 
+// 5. Physics check: Asymmetric gravity & terminal velocity
+const gravity = 0.95;
+const fallGravity = 1.30 * gravity;
+const terminalVelocity = -16;
+assert(fallGravity > gravity, "Falling gravity must be heavier than rising gravity");
+
+function getNextVy(vy) {
+    const g = vy < 0 ? fallGravity : gravity;
+    return Math.max(terminalVelocity, vy - g);
+}
+assert(Math.abs(getNextVy(10) - (10 - 0.95)) < 1e-9);
+assert(Math.abs(getNextVy(-5) - (-6.235)) < 1e-9);
+assert.strictEqual(getNextVy(-16), -16);
+
+// 6. Physics check: Alternating 180-deg leg lifts (never both off ground at same time)
+for (let t = 0; t < Math.PI * 2; t += 0.2) {
+    const swing = Math.sin(t);
+    const leftLift = swing > 0 ? -swing * 9 : 0;
+    const rightLift = swing < 0 ? swing * 9 : 0;
+    // Exactly one foot (or neither at zero crossing) can be lifted
+    assert(!(leftLift < 0 && rightLift < 0), "Both feet must never lift simultaneously in walk cycle");
+}
+
 console.log("All gameplay logic checks passed!");

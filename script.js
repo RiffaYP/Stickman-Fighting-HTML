@@ -45,8 +45,11 @@ const keys = {};
 
 const groundHeight = 45;
 const gravity = 0.95;
+const fallGravity = 1.30 * gravity;
+const terminalVelocity = -16;
 const airDrag = 0.97;
-const groundFriction = 0.85;
+const groundMoveFriction = 0.86;
+const groundStopFriction = 0.45;
 
 // Game states
 let gameRunning = false;
@@ -585,7 +588,8 @@ const player = {
     className: "striker",
     knockbackResistance: 1.0,
     juggleDecay: 0.92,
-    blockHoldTime: 0
+    blockHoldTime: 0,
+    landingRecovery: 0
 };
 
 const enemy = {
@@ -618,7 +622,8 @@ const enemy = {
     aiStateTimer: 0,
     knockbackResistance: 1.0,
     juggleDecay: 0.92,
-    blockHoldTime: 0
+    blockHoldTime: 0,
+    landingRecovery: 0
 };
 
 function applyClassStats(char, className) {
@@ -1094,18 +1099,22 @@ function handleHitstunPhysics(char) {
     char.isBlocking = false;
     char.isMoving = false;
 
+    const wasInAir = char.y > 0;
     char.velocityX *= airDrag;
     char.x += char.velocityX;
     char.y += char.velocityY;
-    char.velocityY -= gravity;
+
+    const currentGravity = char.velocityY < 0 ? fallGravity : gravity;
+    char.velocityY = Math.max(terminalVelocity, char.velocityY - currentGravity);
 
     if (char.y <= 0) {
         char.y = 0;
         char.velocityY = 0;
-        if (char.isJumping || char.isJuggling) {
+        if (wasInAir) {
             char.isJumping = false;
             char.isJuggling = false;
             char.juggleCount = 0;
+            char.landingRecovery = 4;
             spawnImpactDust(char.x + char.width / 2, arenaHeight - groundHeight, char.color);
         }
     }
@@ -1115,10 +1124,14 @@ function handleHitstunPhysics(char) {
 
 function applyMovementPhysics(char) {
     const isGrounded = char.y <= 0;
+    const wasInAir = char.y > 0;
+
     if (char.isBlocking) char.velocityX = 0;
 
     if (isGrounded) {
-        char.velocityX *= char.isMoving ? groundFriction : 0.68;
+        char.velocityX *= char.isMoving ? groundMoveFriction : groundStopFriction;
+        if (!char.isMoving && Math.abs(char.velocityX) < 0.2) char.velocityX = 0;
+        if (char.landingRecovery > 0) char.landingRecovery--;
     } else {
         char.velocityX *= airDrag;
     }
@@ -1127,15 +1140,18 @@ function applyMovementPhysics(char) {
     char.x += char.velocityX;
     char.animTime += char.isMoving ? Math.abs(char.velocityX) * 0.045 : (char.isJuggling ? 0.02 : 0.035);
     char.y += char.velocityY;
-    char.velocityY -= gravity;
+
+    const currentGravity = char.velocityY < 0 ? fallGravity : gravity;
+    char.velocityY = Math.max(terminalVelocity, char.velocityY - currentGravity);
 
     if (char.y <= 0) {
         char.y = 0;
         char.velocityY = 0;
-        if (char.isJumping || char.isJuggling) {
+        if (wasInAir) {
             char.isJumping = false;
             char.isJuggling = false;
             char.juggleCount = 0;
+            char.landingRecovery = 4;
             spawnImpactDust(char.x + char.width / 2, arenaHeight - groundHeight, char.color);
         }
     }
@@ -2288,9 +2304,12 @@ function drawFighter(char, isPlayer) {
     const primaryColor = char.color;
     const lightColor = char.lightColor;
     const shadowColor = char.shadowColor;
-    const idleBreath = Math.sin(char.animTime) * (char.isMoving || char.isAttacking ? 0.5 : 1.8);
+    const isGrounded = char.y <= 0;
+    const walkBob = (char.isMoving && isGrounded) ? -Math.abs(Math.sin(char.animTime)) * 2.5 : 0;
+    const landingSquash = (char.landingRecovery > 0) ? char.landingRecovery * 1.5 : 0;
+    const idleBreath = isGrounded && !char.isMoving ? Math.sin(char.animTime) * 1.8 : 0;
     const recoil = char.isHitstun > 0 ? 5 : 0;
-    ctx.translate(-char.facing * recoil, idleBreath);
+    ctx.translate(-char.facing * recoil, idleBreath + walkBob + landingSquash);
 
     ctx.lineWidth = char.lineWidth;
     ctx.lineCap = "round";
@@ -2366,7 +2385,7 @@ function drawFighter(char, isPlayer) {
         rightLegX = 18;
         leftLegY = -4;
         rightLegY = -2;
-    } else if (char.isJumping) {
+    } else if (char.isJumping || char.y > 0) {
         leftLegX = -8;
         rightLegX = 8;
         leftLegY = -12;
@@ -2377,11 +2396,13 @@ function drawFighter(char, isPlayer) {
         leftLegY = -6;
         rightLegY = -6;
     } else if (char.isMoving) {
-        const swing = Math.sin(char.animTime);
-        leftLegX = -12 - swing * 14;
-        leftLegY = Math.max(0, -Math.abs(Math.cos(char.animTime)) * 8);
-        rightLegX = 12 + swing * 14;
-        rightLegY = Math.max(0, -Math.abs(Math.sin(char.animTime)) * 8);
+        const cycle = char.animTime;
+        const swing = Math.sin(cycle);
+        leftLegX = -12 - swing * 15;
+        rightLegX = 12 + swing * 15;
+        // Alternating 180-deg phase foot step lift
+        leftLegY = swing > 0 ? -swing * 9 : 0;
+        rightLegY = swing < 0 ? swing * 9 : 0;
     }
 
     // Draw Left Leg
