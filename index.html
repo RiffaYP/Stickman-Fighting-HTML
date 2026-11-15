@@ -15,7 +15,13 @@
 
         <div class="hud">
             <div class="player-info">
-                <p>Player (<span id="playerClassName">Striker</span>)</p>
+                <div class="player-meta">
+                    <p>Player (<span id="playerClassName">Striker</span>)</p>
+                    <div class="round-dots" id="playerRounds">
+                        <span class="round-dot"></span>
+                        <span class="round-dot"></span>
+                    </div>
+                </div>
                 <div class="health-box">
                     <div id="playerHealth" class="health-fill player-health"></div>
                 </div>
@@ -32,7 +38,13 @@
             </div>
 
             <div class="player-info">
-                <p>Enemy (<span id="enemyClassName">Striker</span>)</p>
+                <div class="player-meta enemy-meta">
+                    <p>Enemy (<span id="enemyClassName">Striker</span>)</p>
+                    <div class="round-dots" id="enemyRounds">
+                        <span class="round-dot"></span>
+                        <span class="round-dot"></span>
+                    </div>
+                </div>
                 <div class="health-box">
                     <div id="enemyHealth" class="health-fill enemy-health"></div>
                 </div>

@@ -8,6 +8,8 @@ const playerExElement = document.getElementById("playerEx");
 const enemyExElement = document.getElementById("enemyEx");
 const playerClassNameElement = document.getElementById("playerClassName");
 const enemyClassNameElement = document.getElementById("enemyClassName");
+const playerRoundsContainer = document.getElementById("playerRounds");
+const enemyRoundsContainer = document.getElementById("enemyRounds");
 const statusText = document.getElementById("statusText");
 const hitFlashElement = document.getElementById("hitFlash");
 
@@ -55,6 +57,13 @@ let gameMode = "1P"; // "1P" atau "2P"
 let selectingPlayer = 1; // 1 atau 2
 let selectedEnemyClass = "striker";
 let selectedStage = "neon"; // default stage
+let playerRoundsWon = 0;
+let enemyRoundsWon = 0;
+let currentRound = 1;
+const tapTracker = {
+    p1: { key: null, time: 0 },
+    p2: { key: null, time: 0 }
+};
 
 // Arena dimensions
 let arenaWidth = 950;
@@ -575,7 +584,8 @@ const player = {
     isMoving: false,
     className: "striker",
     knockbackResistance: 1.0,
-    juggleDecay: 0.92
+    juggleDecay: 0.92,
+    blockHoldTime: 0
 };
 
 const enemy = {
@@ -607,7 +617,8 @@ const enemy = {
     aiState: "chase",
     aiStateTimer: 0,
     knockbackResistance: 1.0,
-    juggleDecay: 0.92
+    juggleDecay: 0.92,
+    blockHoldTime: 0
 };
 
 function applyClassStats(char, className) {
@@ -806,8 +817,23 @@ function playCountdownFinalSound() {
     osc.stop(now + 0.2);
 }
 
+function updateRoundDots() {
+    if (playerRoundsContainer) {
+        const pDots = playerRoundsContainer.querySelectorAll(".round-dot");
+        pDots.forEach((dot, idx) => {
+            dot.classList.toggle("won", idx < playerRoundsWon);
+        });
+    }
+    if (enemyRoundsContainer) {
+        const eDots = enemyRoundsContainer.querySelectorAll(".round-dot");
+        eDots.forEach((dot, idx) => {
+            dot.classList.toggle("won", idx < enemyRoundsWon);
+        });
+    }
+}
+
 // Countdown before game starts
-function startCountdown(callback) {
+function startCountdown(callback, roundTitle) {
     isCountingDown = true;
     clearKeys();
 
@@ -815,7 +841,7 @@ function startCountdown(callback) {
 
     let count = 3;
 
-    function nextCount() {
+    function runNumbers() {
         if (count > 0) {
             countdownText.textContent = count;
             statusText.textContent = count;
@@ -826,7 +852,7 @@ function startCountdown(callback) {
             countdownText.style.animation = null;
 
             count--;
-            setTimeout(nextCount, 1000);
+            setTimeout(runNumbers, 850);
         } else {
             countdownText.textContent = "MULAI!";
             statusText.textContent = "FIGHT!";
@@ -840,11 +866,18 @@ function startCountdown(callback) {
                 countdownOverlay.classList.add("hidden");
                 isCountingDown = false;
                 if (callback) callback();
-            }, 800);
+            }, 600);
         }
     }
 
-    nextCount();
+    if (roundTitle) {
+        countdownText.textContent = roundTitle;
+        statusText.textContent = roundTitle;
+        playCountdownSound();
+        setTimeout(runNumbers, 900);
+    } else {
+        runNumbers();
+    }
 }
 
 // Keyboard events
@@ -863,6 +896,35 @@ document.addEventListener("keydown", function (event) {
     }
 
     if (isPaused || isCountingDown) return;
+
+    // Dash via Double Tap (A/D for P1, Left/Right arrows for P2)
+    const now = Date.now();
+    if (key === "a" || key === "d") {
+        const last = tapTracker.p1;
+        if (last.key === key && (now - last.time) < 260 && player.y <= 0 && player.isHitstun <= 0 && !player.isBlocking) {
+            const dir = key === "a" ? -1 : 1;
+            player.velocityX = dir * player.speed * 2.3;
+            player.facing = dir;
+            playSound('jump');
+            spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
+            tapTracker.p1 = { key: null, time: 0 };
+        } else {
+            tapTracker.p1 = { key, time: now };
+        }
+    } else if (gameMode === "2P" && (code === "ArrowLeft" || code === "ArrowRight")) {
+        const k = code === "ArrowLeft" ? "arrowleft" : "arrowright";
+        const last = tapTracker.p2;
+        if (last.key === k && (now - last.time) < 260 && enemy.y <= 0 && enemy.isHitstun <= 0 && !enemy.isBlocking) {
+            const dir = k === "arrowleft" ? -1 : 1;
+            enemy.velocityX = dir * enemy.speed * 2.3;
+            enemy.facing = dir;
+            playSound('jump');
+            spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
+            tapTracker.p2 = { key: null, time: 0 };
+        } else {
+            tapTracker.p2 = { key: k, time: now };
+        }
+    }
 
     if (key === "0" || code === "Numpad0") {
         keys["0"] = true;
@@ -1080,6 +1142,21 @@ function applyMovementPhysics(char) {
     limitPosition(char);
 }
 
+function triggerGuardCrush(char) {
+    char.isBlocking = false;
+    char.blockHoldTime = 0;
+    char.isHitstun = 75;
+    char.hitTimer = 25;
+    playSound('hit');
+    const sparkX = char.x + char.width / 2;
+    const sparkY = (arenaHeight - groundHeight) - char.y - char.height / 2;
+    spawnSparks(sparkX, sparkY, "#ef4444");
+    spawnImpactDust(sparkX, sparkY, "#ef4444");
+    screenShake = 16;
+    damageNumbers.push(new DamageNumber(sparkX, sparkY - 30, "CRUSH!", true));
+    statusText.textContent = "GUARD CRUSH!";
+}
+
 function updatePlayerMovement() {
     if (!gameRunning) return;
 
@@ -1091,8 +1168,13 @@ function updatePlayerMovement() {
 
     if (keys["s"] && isGrounded) {
         player.isBlocking = true;
+        player.blockHoldTime = (player.blockHoldTime || 0) + 1;
+        if (player.blockHoldTime >= 180) {
+            triggerGuardCrush(player);
+        }
     } else {
         player.isBlocking = false;
+        player.blockHoldTime = Math.max(0, (player.blockHoldTime || 0) - 2);
 
         if (isGrounded) {
             if (keys["a"]) {
@@ -1148,8 +1230,13 @@ function updateEnemyPlayerMovement() {
 
     if (keys["arrowdown"] && isGrounded) {
         enemy.isBlocking = true;
+        enemy.blockHoldTime = (enemy.blockHoldTime || 0) + 1;
+        if (enemy.blockHoldTime >= 180) {
+            triggerGuardCrush(enemy);
+        }
     } else {
         enemy.isBlocking = false;
+        enemy.blockHoldTime = Math.max(0, (enemy.blockHoldTime || 0) - 2);
 
         if (isGrounded) {
             if (keys["arrowleft"]) {
@@ -1213,8 +1300,14 @@ function updateEnemyAI() {
     if (enemy.blockingTimer > 0) {
         enemy.blockingTimer--;
         enemy.isBlocking = true;
+        enemy.blockHoldTime = (enemy.blockHoldTime || 0) + 1;
+        if (enemy.blockHoldTime >= 180) {
+            enemy.blockingTimer = 0;
+            triggerGuardCrush(enemy);
+        }
     } else {
         enemy.isBlocking = false;
+        enemy.blockHoldTime = Math.max(0, (enemy.blockHoldTime || 0) - 2);
         if (player.isAttacking && distance < blockDistance && Math.random() < blockChance && !enemy.attackCooldown) {
             enemy.isBlocking = true;
             enemy.blockingTimer = blockTimer;
@@ -1272,7 +1365,14 @@ function updateEnemyAI() {
 
         if (distance > chaseDistance) {
             enemy.isMoving = true;
-            enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.18;
+            // Occasional AI dash forward if far away
+            if (distance > 210 && Math.random() < 0.025 && isGrounded) {
+                const dir = player.x < enemy.x ? -1 : 1;
+                enemy.velocityX = dir * enemy.speed * 2.2;
+                spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
+            } else {
+                enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.18;
+            }
 
             if (Math.random() < 0.02 && !enemy.isJumping && isGrounded) {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
@@ -1484,62 +1584,142 @@ function enemyAttack() {
     setTimeout(() => { enemy.attackCooldown = false; }, cooldown);
 }
 
+function executeExSkill(user, target) {
+    if (!gameRunning || roundOver) return;
+    if (user.ex < 30) return;
+    if (user.isBlocking || user.isAttacking || user.attackCooldown || user.isShooting || user.isHitstun > 0) return;
+
+    user.isShooting = true;
+    user.ex -= 30;
+    updateHealthBars();
+
+    const wType = user.weaponType;
+
+    if (wType === "saber") {
+        // Striker: Piercing Laser Blade Wave
+        playSound('projectile');
+        spawnDust(user.x + user.width / 2, arenaHeight - groundHeight);
+        const pX = user.x + (user.facing === 1 ? user.width + 10 : -20);
+        const pY = (arenaHeight - groundHeight) - user.y - user.height * 0.65;
+        projectiles.push({
+            x: pX, y: pY, vx: user.facing * 13, radius: 18,
+            owner: user, color: user.lightColor, shadowColor: user.shadowColor,
+            damage: 18, type: "wave"
+        });
+    } else if (wType === "greatsword") {
+        // Titan: Ground Shockwave
+        playSound('slash');
+        screenShake = 12;
+        spawnImpactDust(user.x + user.width / 2, arenaHeight - groundHeight, user.lightColor);
+        const pX = user.x + (user.facing === 1 ? user.width + 10 : -30);
+        const groundY = arenaHeight - groundHeight;
+        projectiles.push({
+            x: pX, y: groundY - 25, vx: user.facing * 7.5, radius: 24,
+            owner: user, color: user.lightColor, shadowColor: user.shadowColor,
+            damage: 22, type: "shockwave"
+        });
+    } else if (wType === "daggers") {
+        // Shadow: Shadow Step (Teleport Behind + Critical Backstab)
+        playSound('slash');
+        spawnSparks(user.x + user.width / 2, (arenaHeight - groundHeight) - 50, user.color);
+        user.x = target.x - user.facing * 65;
+        limitPosition(user);
+        user.facing = target.x >= user.x ? 1 : -1;
+        spawnSparks(user.x + user.width / 2, (arenaHeight - groundHeight) - 50, user.lightColor);
+
+        target.hp = Math.max(0, target.hp - 18);
+        target.hitTimer = 16;
+        target.isHitstun = 28;
+        screenShake = 10;
+        playSound('hit');
+        triggerHitFlash();
+        const dmgX = target.x + target.width / 2;
+        const dmgY = (arenaHeight - groundHeight) - target.height * 0.6;
+        damageNumbers.push(new DamageNumber(dmgX, dmgY, 18, true));
+        spawnImpactDust(dmgX, arenaHeight - groundHeight, user.lightColor);
+        updateHealthBars();
+        checkWinner();
+    } else if (wType === "staff") {
+        // Mage: Triple Arcane Bolts (Burst of 3 magic orbs)
+        spawnDust(user.x + user.width / 2, arenaHeight - groundHeight);
+        for (let b = 0; b < 3; b++) {
+            setTimeout(() => {
+                if (!gameRunning || roundOver) return;
+                const pX = user.x + (user.facing === 1 ? user.width + 10 : -20);
+                const pY = (arenaHeight - groundHeight) - user.y - user.height * (0.45 + (b - 1) * 0.18);
+                projectiles.push({
+                    x: pX, y: pY, vx: user.facing * 10, radius: 10,
+                    owner: user, color: user.lightColor, shadowColor: user.shadowColor,
+                    damage: 8, type: "orb"
+                });
+                playSound('projectile');
+            }, b * 100);
+        }
+    } else if (wType === "gauntlets") {
+        // Wrestler: Power Tackle / Command Grab (Rush + slam through block)
+        playSound('jump');
+        user.velocityX = user.facing * 15;
+        screenShake = 8;
+        spawnDust(user.x + user.width / 2, arenaHeight - groundHeight);
+
+        setTimeout(() => {
+            if (!gameRunning || roundOver) return;
+            const dist = getDistance(user, target);
+            if (dist < 100) {
+                target.hp = Math.max(0, target.hp - 24);
+                target.isHitstun = 35;
+                target.hitTimer = 18;
+                target.y = 0;
+                target.velocityY = 0;
+                target.velocityX = user.facing * 8;
+                playSound('hit');
+                triggerHitFlash();
+                screenShake = 18;
+                const dmgX = target.x + target.width / 2;
+                damageNumbers.push(new DamageNumber(dmgX, (arenaHeight - groundHeight) - 60, 24, true));
+                spawnImpactDust(dmgX, arenaHeight - groundHeight, user.lightColor);
+                updateHealthBars();
+                checkWinner();
+            }
+        }, 120);
+    } else if (wType === "claws") {
+        // Assassin: Sonic Claw Dash (rapid slice through opponent + air launch)
+        playSound('slash');
+        user.velocityX = user.facing * 18;
+        spawnImpactDust(user.x + user.width / 2, arenaHeight - groundHeight, user.lightColor);
+
+        setTimeout(() => {
+            if (!gameRunning || roundOver) return;
+            const dist = getDistance(user, target);
+            if (dist < 110) {
+                target.hp = Math.max(0, target.hp - 20);
+                target.hitTimer = 18;
+                target.isHitstun = 24;
+                target.isJuggling = true;
+                target.juggleCount = 1;
+                target.velocityY = 11;
+                target.velocityX = user.facing * 4;
+                playSound('hit');
+                triggerHitFlash();
+                screenShake = 12;
+                const dmgX = target.x + target.width / 2;
+                damageNumbers.push(new DamageNumber(dmgX, (arenaHeight - groundHeight) - 60, 20, true));
+                spawnSparks(dmgX, (arenaHeight - groundHeight) - 50, user.lightColor);
+                updateHealthBars();
+                checkWinner();
+            }
+        }, 100);
+    }
+
+    setTimeout(() => { user.isShooting = false; }, 260);
+}
+
 function playerShoot() {
-    if (!gameRunning) return;
-    if (player.ex < 30) return;
-    if (player.isBlocking || player.isAttacking || player.attackCooldown || player.isShooting) return;
-
-    player.isShooting = true;
-    player.ex -= 30;
-
-    playSound('projectile');
-    spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
-
-    const pX = player.x + (player.facing === 1 ? player.width + 10 : -20);
-    const pY = (arenaHeight - groundHeight) - player.y - player.height * 0.65;
-
-    projectiles.push({
-        x: pX,
-        y: pY,
-        vx: player.facing * 9,
-        radius: 12,
-        owner: player,
-        color: player.lightColor,
-        shadowColor: player.shadowColor
-    });
-
-    setTimeout(() => {
-        player.isShooting = false;
-    }, 200);
+    executeExSkill(player, enemy);
 }
 
 function enemyShoot() {
-    if (!gameRunning) return;
-    if (enemy.ex < 30) return;
-    if (enemy.isBlocking || enemy.isAttacking || enemy.attackCooldown || enemy.isShooting) return;
-
-    enemy.isShooting = true;
-    enemy.ex -= 30;
-
-    playSound('projectile');
-    spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
-
-    const pX = enemy.x + (enemy.facing === 1 ? enemy.width + 10 : -20);
-    const pY = (arenaHeight - groundHeight) - enemy.y - enemy.height * 0.65;
-
-    projectiles.push({
-        x: pX,
-        y: pY,
-        vx: enemy.facing * 9,
-        radius: 12,
-        owner: enemy,
-        color: enemy.lightColor,
-        shadowColor: enemy.shadowColor
-    });
-
-    setTimeout(() => {
-        enemy.isShooting = false;
-    }, 200);
+    executeExSkill(enemy, player);
 }
 
 function getDistance(char1, char2) {
@@ -1671,13 +1851,108 @@ function spawnVictoryBurst() {
     }
 }
 
+function handleRoundEnd() {
+    const playerWon = koSlowMoTarget === enemy;
+    koSlowMoTarget = null;
+
+    if (playerWon) {
+        playerRoundsWon++;
+    } else {
+        enemyRoundsWon++;
+    }
+    updateRoundDots();
+
+    const winnerLabel = playerWon 
+        ? (gameMode === "1P" ? "PLAYER" : "PLAYER 1") 
+        : (gameMode === "1P" ? "ENEMY" : "PLAYER 2");
+
+    if (playerRoundsWon >= 2 || enemyRoundsWon >= 2) {
+        const msg = `${winnerLabel} WINS MATCH!`;
+        statusText.textContent = msg;
+        showGameOver(msg);
+    } else {
+        const msg = `${winnerLabel} WINS ROUND ${currentRound}!`;
+        statusText.textContent = msg;
+        setTimeout(() => {
+            startNextRound();
+        }, 1500);
+    }
+}
+
+function startNextRound() {
+    currentRound++;
+    player.hp = player.maxHp;
+    player.targetHp = player.maxHp;
+    player.displayHp = player.maxHp;
+    enemy.hp = enemy.maxHp;
+    enemy.targetHp = enemy.maxHp;
+    enemy.displayHp = enemy.maxHp;
+
+    player.x = 120;
+    player.y = 0;
+    player.velocityX = 0;
+    player.velocityY = 0;
+    player.facing = 1;
+    player.isHitstun = 0;
+    player.isJuggling = false;
+    player.juggleCount = 0;
+    player.isBlocking = false;
+    player.blockHoldTime = 0;
+    player.isAttacking = false;
+    player.isShooting = false;
+    player.attackCooldown = false;
+
+    enemy.x = arenaWidth - 160;
+    enemy.y = 0;
+    enemy.velocityX = 0;
+    enemy.velocityY = 0;
+    enemy.facing = -1;
+    enemy.isHitstun = 0;
+    enemy.isJuggling = false;
+    enemy.juggleCount = 0;
+    enemy.isBlocking = false;
+    enemy.blockHoldTime = 0;
+    enemy.isAttacking = false;
+    enemy.isShooting = false;
+    enemy.attackCooldown = false;
+    enemy.blockingTimer = 0;
+    enemy.aiState = "chase";
+    enemy.aiStateTimer = 0;
+
+    projectiles = [];
+    particles = [];
+    damageNumbers = [];
+    hitStopFrames = 0;
+    screenShake = 0;
+    roundOver = false;
+    roundTimer = 99;
+
+    updateHealthBars();
+    startRoundTimer();
+
+    startCountdown(() => {
+        gameRunning = true;
+    }, `ROUND ${currentRound}`);
+}
+
+function startRoundTimer() {
+    if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
+    roundTimerInterval = setInterval(() => {
+        if (gameRunning && !roundOver && !isPaused && !isCountingDown && roundTimer > 0) {
+            roundTimer--;
+            statusText.textContent = `${roundTimer}`;
+            if (roundTimer <= 0) checkWinner();
+        }
+    }, 1000);
+}
+
 function checkWinner() {
+    if (roundOver) return;
     if (enemy.hp <= 0) {
         gameRunning = false;
         roundOver = true;
         if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
-        // KO Slow-mo
-        koSlowMo = 90; // 1.5 seconds at 60fps
+        koSlowMo = 80;
         koSlowMoTarget = enemy;
         screenShake = 20;
         hitStopFrames = 30;
@@ -1685,8 +1960,7 @@ function checkWinner() {
         gameRunning = false;
         roundOver = true;
         if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
-        // KO Slow-mo
-        koSlowMo = 90;
+        koSlowMo = 80;
         koSlowMoTarget = player;
         screenShake = 20;
         hitStopFrames = 30;
@@ -1694,9 +1968,8 @@ function checkWinner() {
         gameRunning = false;
         roundOver = true;
         if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
-        const msg = player.hp > enemy.hp ? (gameMode === "1P" ? "PLAYER WIN!" : "PLAYER 1 WIN!") : (gameMode === "1P" ? "ENEMY WIN!" : "PLAYER 2 WIN!");
-        statusText.textContent = msg + " (TIME UP!)";
-        showGameOver(msg + " (TIME UP!)");
+        koSlowMoTarget = player.hp >= enemy.hp ? enemy : player;
+        handleRoundEnd();
     }
 }
 
@@ -1870,7 +2143,7 @@ function updateProjectiles() {
         p.x += p.vx;
 
         // Boundaries delete
-        if (p.x < -30 || p.x > arenaWidth + 30) {
+        if (p.x < -40 || p.x > arenaWidth + 40) {
             projectiles.splice(i, 1);
             continue;
         }
@@ -1884,19 +2157,21 @@ function updateProjectiles() {
         const targetBottom = groundY - target.y;
         const targetTop = targetBottom - target.height;
 
-        // Collision circle with box
+        // Collision check
         if (p.x + p.radius > targetLeft && p.x - p.radius < targetRight &&
             p.y + p.radius > targetTop && p.y - p.radius < targetBottom) {
 
-            const isPlayerTarget = (target === player);
+            const dmg = p.damage || 12;
 
             if (target.isBlocking && target.facing === -p.owner.facing) {
                 // Blocked!
-                target.hp -= 1; // chip
+                const chipDmg = p.type === "shockwave" ? 4 : 1;
+                target.hp -= chipDmg;
                 target.hp = Math.max(target.hp, 0);
                 target.ex = Math.min(100, target.ex + 10);
 
-                target.velocityX += p.owner.facing * 8 / (target.knockbackResistance || 1);
+                const pushForce = p.type === "shockwave" ? 14 : 8;
+                target.velocityX += p.owner.facing * pushForce / (target.knockbackResistance || 1);
                 playSound('block');
 
                 // Yellow block sparks
@@ -1904,13 +2179,13 @@ function updateProjectiles() {
                 spawnImpactDust(p.x, p.y, "#facc15");
             } else {
                 // Hit! - apply juggle physics
-                target.hp -= 12; // Projectile damage
+                target.hp -= dmg;
                 target.hp = Math.max(target.hp, 0);
-                target.hitTimer = 12;
+                target.hitTimer = 14;
 
                 const kbResist = target.knockbackResistance || 1;
-                const baseKnockbackX = 6 / kbResist;
-                const baseKnockbackY = 9 / kbResist;
+                const baseKnockbackX = (p.type === "shockwave" ? 9 : 6) / kbResist;
+                const baseKnockbackY = (p.type === "shockwave" ? 11 : 9) / kbResist;
 
                 const wasGrounded = target.y <= 0;
                 const isJuggle = target.isJuggling || (!wasGrounded && target.juggleCount < 3);
@@ -1920,15 +2195,15 @@ function updateProjectiles() {
                     target.juggleCount++;
                     target.velocityY = baseKnockbackY * (1.1 - target.juggleCount * 0.15);
                     target.velocityX += p.owner.facing * baseKnockbackX * 0.7;
-                    target.isHitstun = 16 + target.juggleCount * 2;
+                    target.isHitstun = 18 + target.juggleCount * 2;
                     hitStopFrames = 6;
-                    screenShake = 8;
+                    screenShake = 10;
                 } else {
                     target.velocityX += p.owner.facing * baseKnockbackX * 1.3;
                     target.velocityY = baseKnockbackY * 0.5;
-                    target.isHitstun = 14;
+                    target.isHitstun = 15;
                     hitStopFrames = 5;
-                    screenShake = 6;
+                    screenShake = 8;
                     target.isJuggling = true;
                     target.juggleCount = 1;
                 }
@@ -1939,9 +2214,9 @@ function updateProjectiles() {
                 playSound('hit');
                 triggerHitFlash();
 
-                // Damage number popup for projectile
+                // Damage number popup
                 const isCrit = target.isJuggling;
-                damageNumbers.push(new DamageNumber(p.x, p.y, 12, isCrit));
+                damageNumbers.push(new DamageNumber(p.x, p.y, dmg, isCrit));
 
                 spawnSparks(p.x, p.y, target.lightColor);
                 spawnImpactDust(p.x, p.y, target.lightColor);
@@ -1957,18 +2232,45 @@ function updateProjectiles() {
 function drawProjectiles() {
     for (const p of projectiles) {
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = p.shadowColor;
-        ctx.fill();
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = p.shadowColor || p.color;
 
-        // Projectile inner core
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius * 0.5, 0, Math.PI * 2);
-        ctx.fillStyle = "#ffffff";
-        ctx.fill();
+        if (p.type === "shockwave") {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            const h = p.radius * 1.8;
+            ctx.moveTo(p.x, p.y + h / 2);
+            ctx.lineTo(p.x + (p.vx > 0 ? 16 : -16), p.y - h / 2);
+            ctx.lineTo(p.x, p.y - h * 0.4);
+            ctx.lineTo(p.x - (p.vx > 0 ? 10 : -10), p.y + h / 2);
+            ctx.closePath();
+            ctx.fill();
+        } else if (p.type === "wave") {
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            const startA = p.vx > 0 ? -Math.PI * 0.45 : Math.PI * 0.55;
+            const endA = p.vx > 0 ? Math.PI * 0.45 : Math.PI * 1.45;
+            ctx.arc(p.x, p.y, p.radius, startA, endA);
+            ctx.stroke();
+
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius * 0.7, startA, endA);
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+
+            // Inner core
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius * 0.45, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+        }
         ctx.restore();
     }
 }
@@ -2008,14 +2310,16 @@ function drawFighter(char, isPlayer) {
     if (char.isBlocking) {
         ctx.save();
         ctx.lineWidth = 4;
+        const isCrushWarning = (char.blockHoldTime || 0) > 120;
+        const shieldColor = isCrushWarning ? "#ef4444" : lightColor;
         ctx.shadowBlur = 15;
-        ctx.shadowColor = shadowColor;
-        ctx.strokeStyle = lightColor;
+        ctx.shadowColor = isCrushWarning ? "#ef4444" : shadowColor;
+        ctx.strokeStyle = shieldColor;
 
         const shieldRadius = char.height * 0.55;
         const shieldGrad = ctx.createRadialGradient(0, -char.height / 2, 10, 0, -char.height / 2, shieldRadius);
         shieldGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
-        shieldGrad.addColorStop(1, isPlayer ? "rgba(59, 130, 246, 0.15)" : "rgba(239, 68, 68, 0.15)");
+        shieldGrad.addColorStop(1, isCrushWarning ? "rgba(239, 68, 68, 0.35)" : (isPlayer ? "rgba(59, 130, 246, 0.15)" : "rgba(239, 68, 68, 0.15)"));
         ctx.fillStyle = shieldGrad;
 
         ctx.beginPath();
@@ -2092,62 +2396,90 @@ function drawFighter(char, isPlayer) {
     ctx.lineTo(rightLegX, rightLegY);
     ctx.stroke();
 
-    // D. Back Arm (Left Arm) - Khusus Shadow memegang belati kedua!
+    // D. Back Arm (Left Arm) & Off-hand weapons
     if (char.weaponType === "daggers") {
-        // Shadow Back Dagger (Twin Daggers style)
-        let leftArmAngle = -1.8; // default backward/upward
-        if (char.isBlocking) {
-            leftArmAngle = 0.5;
-        } else if (char.isMoving) {
-            leftArmAngle = -1.8 + Math.sin(char.animTime) * 0.3;
-        } else if (char.isShooting) {
-            leftArmAngle = 0; // menembak ke depan
-        }
-
+        // Shadow: Left reverse dagger
+        const leftArmAngle = char.isBlocking ? 0.5 : (char.isShooting ? 0 : -1.8 + (char.isMoving ? Math.sin(char.animTime) * 0.3 : 0));
         const armLen = armLength - 4;
         const lhx = -4 + Math.cos(leftArmAngle) * armLen;
         const lhy = shoulderY + Math.sin(leftArmAngle) * armLen;
 
-        // Draw Left Arm
         ctx.beginPath();
         ctx.moveTo(-4, shoulderY);
         ctx.lineTo(lhx, lhy);
         ctx.stroke();
 
-        // Left Dagger (shorter blade)
-        const leftHandleLength = 5;
-        const leftBladeLength = 22;
+        const lbx = lhx + Math.cos(leftArmAngle) * 22;
+        const lby = lhy + Math.sin(leftArmAngle) * 22;
 
-        const lhx_end = lhx + Math.cos(leftArmAngle) * leftHandleLength;
-        const lhy_end = lhy + Math.sin(leftArmAngle) * leftHandleLength;
-
-        const lbx = lhx_end + Math.cos(leftArmAngle) * leftBladeLength;
-        const lby = lhy_end + Math.sin(leftArmAngle) * leftBladeLength;
-
-        // Handle
-        ctx.save();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = "#9ca3af";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(lhx, lhy);
-        ctx.lineTo(lhx_end, lhy_end);
-        ctx.stroke();
-        ctx.restore();
-
-        // Blade
         ctx.save();
         ctx.strokeStyle = lightColor;
         ctx.shadowColor = shadowColor;
         ctx.shadowBlur = 12;
         ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.moveTo(lhx_end, lhy_end);
+        ctx.moveTo(lhx, lhy);
         ctx.lineTo(lbx, lby);
         ctx.stroke();
         ctx.restore();
+    } else if (char.weaponType === "claws") {
+        // Assassin: Left claw arm
+        const leftArmAngle = char.isBlocking ? -0.8 : (char.isAttacking ? 0.2 : -1.4 + Math.sin(char.animTime) * 0.2);
+        const armLen = armLength - 3;
+        const lhx = -4 + Math.cos(leftArmAngle) * armLen;
+        const lhy = shoulderY + Math.sin(leftArmAngle) * armLen;
+
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(lhx, lhy);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.strokeStyle = lightColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 10;
+        ctx.lineWidth = 2.5;
+        [-0.18, 0, 0.18].forEach(spread => {
+            const cx = lhx + Math.cos(leftArmAngle + spread) * 20;
+            const cy = lhy + Math.sin(leftArmAngle + spread) * 20;
+            ctx.beginPath();
+            ctx.moveTo(lhx, lhy);
+            ctx.lineTo(cx, cy);
+            ctx.stroke();
+        });
+        ctx.restore();
+    } else if (char.weaponType === "gauntlets") {
+        // Wrestler: Left armored power fist
+        const leftArmAngle = char.isBlocking ? -1.0 : (char.isAttacking ? 0.1 : -0.6 + Math.sin(char.animTime) * 0.2);
+        const armLen = armLength;
+        const lhx = -4 + Math.cos(leftArmAngle) * armLen;
+        const lhy = shoulderY + Math.sin(leftArmAngle) * armLen;
+
+        ctx.beginPath();
+        ctx.moveTo(-4, shoulderY);
+        ctx.lineTo(lhx, lhy);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.strokeStyle = lightColor;
+        ctx.fillStyle = shadowColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(lhx, lhy, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        [-0.2, 0.2].forEach(spread => {
+            ctx.beginPath();
+            ctx.moveTo(lhx, lhy);
+            ctx.lineTo(lhx + Math.cos(leftArmAngle + spread) * 14, lhy + Math.sin(leftArmAngle + spread) * 14);
+            ctx.stroke();
+        });
+        ctx.restore();
     } else {
-        // Striker & Titan standard back arm
+        // Striker, Titan & Mage standard back arm
         ctx.beginPath();
         ctx.moveTo(-4, shoulderY);
         if (char.isBlocking) {
@@ -2162,11 +2494,11 @@ function drawFighter(char, isPlayer) {
         ctx.stroke();
     }
 
-    // E. Front Arm (Right Arm) & Main Lightsaber
+    // E. Front Arm (Right Arm)
     let armAngle = 0.3;
     if (char.isShooting) {
         armAngle = 0; // Extended straight forward
-    } else     if (char.isAttacking) {
+    } else if (char.isAttacking) {
         const attackProgress = Math.max(0, Math.min(1, (Date.now() - char.attackStartTime) / 180));
         const easedAttack = attackProgress * attackProgress * (3 - 2 * attackProgress);
         armAngle = -0.8 + easedAttack * 2.5;
@@ -2185,57 +2517,122 @@ function drawFighter(char, isPlayer) {
     ctx.lineTo(handX, handY);
     ctx.stroke();
 
-    // F. Lightsaber / Main Weapon
+    // F. Main Weapon based on weaponType
     const handleLength = 8;
-    const bladeLength = char.bladeLength;
-
     const hx = handX + Math.cos(armAngle) * handleLength;
     const hy = handY + Math.sin(armAngle) * handleLength;
+    const bx = hx + Math.cos(armAngle) * char.bladeLength;
+    const by = hy + Math.sin(armAngle) * char.bladeLength;
 
-    const bx = hx + Math.cos(armAngle) * bladeLength;
-    const by = hy + Math.sin(armAngle) * bladeLength;
+    if (char.weaponType === "gauntlets") {
+        // Wrestler: Heavy Power Gauntlet
+        ctx.save();
+        ctx.strokeStyle = lightColor;
+        ctx.fillStyle = shadowColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 16;
+        ctx.lineWidth = 5;
 
-    // Hilt crossguard khusus untuk Titan (Greatsword)
-    if (char.weaponType === "greatsword") {
-        const guardLength = 10;
-        const gx1 = hx + Math.cos(armAngle + Math.PI / 2) * guardLength;
-        const gy1 = hy + Math.sin(armAngle + Math.PI / 2) * guardLength;
-        const gx2 = hx - Math.cos(armAngle + Math.PI / 2) * guardLength;
-        const gy2 = hy - Math.sin(armAngle + Math.PI / 2) * guardLength;
+        ctx.beginPath();
+        ctx.arc(handX, handY, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        [-0.25, 0, 0.25].forEach(spread => {
+            const sx = handX + Math.cos(armAngle + spread) * 18;
+            const sy = handY + Math.sin(armAngle + spread) * 18;
+            ctx.beginPath();
+            ctx.moveTo(handX, handY);
+            ctx.lineTo(sx, sy);
+            ctx.stroke();
+        });
+        ctx.restore();
+    } else if (char.weaponType === "claws") {
+        // Assassin: 3-Pronged Razor Claws
+        ctx.save();
+        ctx.strokeStyle = lightColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 3;
+
+        [-0.2, 0, 0.2].forEach(spread => {
+            const cx = handX + Math.cos(armAngle + spread) * char.bladeLength;
+            const cy = handY + Math.sin(armAngle + spread) * char.bladeLength;
+            ctx.beginPath();
+            ctx.moveTo(handX, handY);
+            ctx.lineTo(cx, cy);
+            ctx.stroke();
+        });
+        ctx.restore();
+    } else if (char.weaponType === "staff") {
+        // Mage: Arcane Staff with Magic Orb
+        const backX = handX - Math.cos(armAngle) * 22;
+        const backY = handY - Math.sin(armAngle) * 22;
 
         ctx.save();
-        ctx.shadowBlur = 0;
         ctx.strokeStyle = "#9ca3af";
         ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.moveTo(gx1, gy1);
-        ctx.lineTo(gx2, gy2);
+        ctx.moveTo(backX, backY);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+
+        ctx.strokeStyle = lightColor;
+        ctx.fillStyle = lightColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(bx, by, 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(bx, by, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    } else {
+        // Striker (saber), Titan (greatsword), Shadow (daggers)
+        if (char.weaponType === "greatsword") {
+            const guardLength = 12;
+            const gx1 = hx + Math.cos(armAngle + Math.PI / 2) * guardLength;
+            const gy1 = hy + Math.sin(armAngle + Math.PI / 2) * guardLength;
+            const gx2 = hx - Math.cos(armAngle + Math.PI / 2) * guardLength;
+            const gy2 = hy - Math.sin(armAngle + Math.PI / 2) * guardLength;
+
+            ctx.save();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = "#9ca3af";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(gx1, gy1);
+            ctx.lineTo(gx2, gy2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Draw Handle
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "#9ca3af";
+        ctx.lineWidth = char.lineWidth - 1;
+        ctx.beginPath();
+        ctx.moveTo(handX, handY);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+        ctx.restore();
+
+        // Draw Main Blade
+        ctx.save();
+        ctx.strokeStyle = lightColor;
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 18;
+        ctx.lineWidth = char.lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(bx, by);
         ctx.stroke();
         ctx.restore();
     }
-
-    // Draw Handle
-    ctx.save();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = "#9ca3af";
-    ctx.lineWidth = char.lineWidth - 1;
-    ctx.beginPath();
-    ctx.moveTo(handX, handY);
-    ctx.lineTo(hx, hy);
-    ctx.stroke();
-    ctx.restore();
-
-    // Draw Main Blade (Glowing Neon)
-    ctx.save();
-    ctx.strokeStyle = lightColor;
-    ctx.shadowColor = shadowColor;
-    ctx.shadowBlur = 18;
-    ctx.lineWidth = char.lineWidth;
-    ctx.beginPath();
-    ctx.moveTo(hx, hy);
-    ctx.lineTo(bx, by);
-    ctx.stroke();
-    ctx.restore();
 
     ctx.restore();
 }
@@ -2328,10 +2725,7 @@ function gameLoop() {
     if (koSlowMo > 0) {
         koSlowMo--;
         if (koSlowMo <= 0 && koSlowMoTarget) {
-            const msg = koSlowMoTarget === player ? (gameMode === "1P" ? "ENEMY WIN!" : "PLAYER 2 WIN!") : (gameMode === "1P" ? "PLAYER WIN!" : "PLAYER 1 WIN!");
-            statusText.textContent = msg;
-            showGameOver(msg);
-            koSlowMoTarget = null;
+            handleRoundEnd();
         }
     }
 
@@ -2358,6 +2752,12 @@ function gameLoop() {
 }
 
 function restartGame() {
+    // Reset match rounds
+    playerRoundsWon = 0;
+    enemyRoundsWon = 0;
+    currentRound = 1;
+    updateRoundDots();
+
     // Assign classes
     applyClassStats(player, selectedPlayerClass);
 
@@ -2375,12 +2775,15 @@ function restartGame() {
     player.velocityX = 0;
     player.velocityY = 0;
     player.hp = player.maxHp;
+    player.targetHp = player.maxHp;
+    player.displayHp = player.maxHp;
     player.ex = 0;
     player.facing = 1;
     player.isJumping = false;
     player.isAttacking = false;
     player.attackCooldown = false;
     player.isBlocking = false;
+    player.blockHoldTime = 0;
     player.isShooting = false;
     player.hitTimer = 0;
     player.isHitstun = 0;
@@ -2398,12 +2801,15 @@ function restartGame() {
     enemy.velocityX = 0;
     enemy.velocityY = 0;
     enemy.hp = enemy.maxHp;
+    enemy.targetHp = enemy.maxHp;
+    enemy.displayHp = enemy.maxHp;
     enemy.ex = 0;
     enemy.facing = -1;
     enemy.isJumping = false;
     enemy.isAttacking = false;
     enemy.attackCooldown = false;
     enemy.isBlocking = false;
+    enemy.blockHoldTime = 0;
     enemy.isShooting = false;
     enemy.hitTimer = 0;
     enemy.isHitstun = 0;
@@ -2425,21 +2831,14 @@ function restartGame() {
     roundTimer = 99;
     koSlowMo = 0;
     koSlowMoTarget = null;
-    if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
-    roundTimerInterval = setInterval(() => {
-        if (gameRunning && !roundOver && !isPaused && !isCountingDown && roundTimer > 0) {
-            roundTimer--;
-            statusText.textContent = `${roundTimer}`;
-            if (roundTimer <= 0) checkWinner();
-        }
-    }, 1000);
+    startRoundTimer();
 
     gameRunning = true;
 
     updateHealthBars();
 
     if (!inMainMenu) {
-        startCountdown();
+        startCountdown(() => { gameRunning = true; }, "ROUND 1");
     } else {
         statusText.textContent = "FIGHT!";
     }

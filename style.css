@@ -69,8 +69,40 @@ h1 {
     width: 35%;
 }
 
-.player-info p {
+.player-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 5px;
+}
+
+.player-meta.enemy-meta {
+    flex-direction: row-reverse;
+}
+
+.round-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.round-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #374151;
+    border: 1px solid #6b7280;
+    transition: all 0.25s ease;
+}
+
+.round-dot.won {
+    background-color: #facc15;
+    border-color: #fef08a;
+    box-shadow: 0 0 10px #facc15, 0 0 16px rgba(250, 204, 21, 0.6);
+}
+
+.player-info p {
+    margin-bottom: 0;
     font-weight: bold;
 }
 
