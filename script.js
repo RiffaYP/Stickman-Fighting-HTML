@@ -267,180 +267,12 @@ window.addEventListener('resize', () => {
     initTouchControls();
 });
 
-// Asset Pipeline
-class AssetManager {
-    constructor() {
-        this.images = new Map();
-        this.audio = new Map();
-        this.spriteAtlases = new Map();
-        this.loadingQueue = [];
-        this.loadedCount = 0;
-        this.totalCount = 0;
-        this.onProgress = null;
-        this.onComplete = null;
-    }
-
-    // Load single image
-    loadImage(key, url) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                this.images.set(key, img);
-                resolve(img);
-            };
-            img.onerror = reject;
-            img.src = url;
-        });
-    }
-
-    // Load sprite atlas (image + JSON metadata)
-    loadSpriteAtlas(key, imageUrl, jsonUrl) {
-        return Promise.all([
-            this.loadImage(key, imageUrl),
-            fetch(jsonUrl).then(r => r.json())
-        ]).then(([img, metadata]) => {
-            this.spriteAtlases.set(key, { image: img, metadata });
-            return { image: img, metadata };
-        });
-    }
-
-    // Load audio file
-    loadAudio(key, url) {
-        return fetch(url)
-            .then(r => r.arrayBuffer())
-            .then(data => audioCtx.decodeAudioData(data))
-            .then(buffer => {
-                this.audio.set(key, buffer);
-                return buffer;
-            });
-    }
-
-    // Load audio sprite (single file with multiple sounds + JSON timing)
-    loadAudioSprite(key, audioUrl, jsonUrl) {
-        return Promise.all([
-            this.loadAudio(key + '_buffer', audioUrl),
-            fetch(jsonUrl).then(r => r.json())
-        ]).then(([buffer, metadata]) => {
-            this.audio.set(key, { buffer, metadata });
-            return { buffer, metadata };
-        });
-    }
-
-    // Batch load multiple assets
-    loadManifest(manifest) {
-        this.loadingQueue = manifest;
-        this.totalCount = manifest.length;
-        this.loadedCount = 0;
-
-        const promises = manifest.map(asset => {
-            let promise;
-            switch (asset.type) {
-                case 'image':
-                    promise = this.loadImage(asset.key, asset.url);
-                    break;
-                case 'atlas':
-                    promise = this.loadSpriteAtlas(asset.key, asset.imageUrl, asset.jsonUrl);
-                    break;
-                case 'audio':
-                    promise = this.loadAudio(asset.key, asset.url);
-                    break;
-                case 'audioSprite':
-                    promise = this.loadAudioSprite(asset.key, asset.audioUrl, asset.jsonUrl);
-                    break;
-            }
-            return promise.then(() => {
-                this.loadedCount++;
-                if (this.onProgress) this.onProgress(this.loadedCount, this.totalCount, asset.key);
-            });
-        });
-
-        return Promise.all(promises).then(() => {
-            if (this.onComplete) this.onComplete();
-        });
-    }
-
-    getImage(key) { return this.images.get(key); }
-    getAudio(key) { return this.audio.get(key); }
-    getAtlas(key) { return this.spriteAtlases.get(key); }
-
-    // Play audio sprite
-    playAudioSprite(key, spriteName, volume = 1.0) {
-        const asset = this.audio.get(key);
-        if (!asset || !asset.metadata) return;
-
-        const sprite = asset.metadata.sprites[spriteName];
-        if (!sprite) return;
-
-        const source = audioCtx.createBufferSource();
-        source.buffer = asset.buffer;
-        const gainNode = audioCtx.createGain();
-        gainNode.gain.value = volume;
-        source.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-
-        source.start(0, sprite.start, sprite.duration);
-        return source;
-    }
-
-    // Draw sprite from atlas
-    drawSprite(ctx, atlasKey, spriteName, x, y, w, h, flipped = false) {
-        const atlas = this.spriteAtlases.get(atlasKey);
-        if (!atlas) return;
-
-        const sprite = atlas.metadata.frames[spriteName];
-        if (!sprite) return;
-
-        ctx.save();
-        if (flipped) {
-            ctx.scale(-1, 1);
-            ctx.drawImage(
-                atlas.image,
-                sprite.x, sprite.y, sprite.w, sprite.h,
-                -x - w, y, w, h
-            );
-        } else {
-            ctx.drawImage(
-                atlas.image,
-                sprite.x, sprite.y, sprite.w, sprite.h,
-                x, y, w, h
-            );
-        }
-        ctx.restore();
-    }
-}
-
-const assetManager = new AssetManager();
-
-// Preload essential assets on first interaction
-function preloadAssets() {
-    // Example manifest - replace with actual asset URLs when available
-    const manifest = [
-        // { type: 'image', key: 'bg_neon', url: 'assets/bg_neon.png' },
-        // { type: 'atlas', key: 'striker', imageUrl: 'assets/striker.png', jsonUrl: 'assets/striker.json' },
-        // { type: 'audio', key: 'hit', url: 'assets/hit.ogg' },
-        // { type: 'audioSprite', key: 'sfx', audioUrl: 'assets/sfx.ogg', jsonUrl: 'assets/sfx.json' }
-    ];
-
-    if (manifest.length > 0) {
-        assetManager.onProgress = (loaded, total, key) => {
-            console.log(`Loading: ${key} (${loaded}/${total})`);
-        };
-        assetManager.onComplete = () => {
-            console.log('All assets loaded!');
-        };
-        assetManager.loadManifest(manifest);
-    }
-}
-
-// Initialize asset loading on first user interaction
+// Audio Synthesizer (Web Audio API)
+// ponytail: synth Sfx via Web Audio API. Upgrade to audio assets if custom sounds needed.
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 document.addEventListener('click', () => {
-    preloadAssets();
     if (audioCtx.state === 'suspended') audioCtx.resume();
 }, { once: true });
-
-// Audio Synthesizer (Web Audio API)
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playSound(type) {
     if (audioCtx.state === 'suspended') {
@@ -711,330 +543,7 @@ const STAGES = {
     }
 };
 
-const SPRITE_ANIMATIONS = {
-    idle: { frames: 4, frameRate: 8 },
-    run: { frames: 6, frameRate: 12 },
-    jump: { frames: 3, frameRate: 10 },
-    attack: { frames: 4, frameRate: 15 },
-    hit: { frames: 2, frameRate: 20 },
-    block: { frames: 2, frameRate: 8 },
-    shoot: { frames: 3, frameRate: 12 },
-    death: { frames: 4, frameRate: 6 }
-};
-
-function createProceduralSpriteSheet(char) {
-    // Creates procedural animated sprites as offscreen canvases
-    const sheet = {};
-    const w = char.width;
-    const h = char.height;
-    const primaryColor = char.color;
-    const lightColor = char.lightColor;
-    const shadowColor = char.shadowColor;
-    const weaponType = char.weaponType;
-
-    // Create a canvas for each animation state
-    Object.keys(SPRITE_ANIMATIONS).forEach(state => {
-        const anim = SPRITE_ANIMATIONS[state];
-        const canvas = document.createElement('canvas');
-        canvas.width = w * anim.frames;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-
-        for (let f = 0; f < anim.frames; f++) {
-            ctx.save();
-            ctx.translate(f * w + w / 2, h);
-
-            const progress = f / (anim.frames - 1);
-            drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColor, shadowColor, weaponType, char.facing);
-
-            ctx.restore();
-        }
-
-        sheet[state] = { canvas, frames: anim.frames, frameRate: anim.frameRate };
-    });
-
-    return sheet;
-}
-
-function drawProceduralFrame(ctx, state, progress, w, h, primaryColor, lightColor, shadowColor, weaponType, facing) {
-    const headR = 15;
-    const neckY = -h + 2 * headR + 4;
-    const pelvisY = -45;
-    const shoulderY = neckY + 8;
-    const armLen = 25;
-
-    // Body tint based on state
-    let bodyColor = primaryColor;
-    if (state === 'hit') bodyColor = '#ffffff';
-    else if (state === 'block') bodyColor = lightColor;
-
-    ctx.strokeStyle = bodyColor;
-    ctx.shadowColor = shadowColor;
-    ctx.shadowBlur = 10;
-    ctx.lineWidth = 4;
-    ctx.lineCap = "round";
-
-    // Legs
-    let legSwing = 0;
-    if (state === 'run') legSwing = Math.sin(progress * Math.PI * 2) * 18;
-    else if (state === 'idle') legSwing = Math.sin(progress * Math.PI * 2) * 3;
-
-    // Left leg
-    ctx.beginPath();
-    ctx.moveTo(-3, pelvisY);
-    ctx.lineTo(-12 - legSwing, Math.max(0, -Math.abs(Math.cos(progress * Math.PI * 2)) * 8));
-    ctx.stroke();
-
-    // Right leg
-    ctx.beginPath();
-    ctx.moveTo(3, pelvisY);
-    ctx.lineTo(12 + legSwing, Math.max(0, -Math.abs(Math.sin(progress * Math.PI * 2)) * 8));
-    ctx.stroke();
-
-    // Spine
-    ctx.beginPath();
-    ctx.moveTo(0, neckY);
-    ctx.lineTo(0, pelvisY);
-    ctx.stroke();
-
-    // Head
-    ctx.beginPath();
-    ctx.arc(0, -h + headR + 4, headR, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Arms based on state
-    if (state === 'attack') {
-        const attackProg = progress;
-        const angle = -0.8 + attackProg * 2.5;
-        const handX = 4 + Math.cos(angle) * armLen;
-        const handY = shoulderY + Math.sin(angle) * armLen;
-
-        // Front arm
-        ctx.beginPath();
-        ctx.moveTo(4, shoulderY);
-        ctx.lineTo(handX, handY);
-        ctx.stroke();
-
-        // Weapon
-        let bladeLen, lineW;
-        if (weaponType === 'greatsword') { bladeLen = 60; lineW = 8; }
-        else if (weaponType === 'daggers') { bladeLen = 32; lineW = 4; }
-        else if (weaponType === 'staff') { bladeLen = 55; lineW = 4; }
-        else if (weaponType === 'gauntlets') { bladeLen = 25; lineW = 6; }
-        else if (weaponType === 'claws') { bladeLen = 28; lineW = 3; }
-        else { bladeLen = 45; lineW = 5; }
-
-        const hx = handX + Math.cos(angle) * 8;
-        const hy = handY + Math.sin(angle) * 8;
-        const bx = hx + Math.cos(angle) * bladeLen;
-        const by = hy + Math.sin(angle) * bladeLen;
-
-        ctx.save();
-        ctx.strokeStyle = lightColor;
-        ctx.shadowColor = shadowColor;
-        ctx.shadowBlur = 15;
-        ctx.lineWidth = lineW;
-        ctx.beginPath();
-        ctx.moveTo(hx, hy);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-        ctx.restore();
-    } else if (state === 'block') {
-        // Blocking pose - arms crossed
-        ctx.beginPath();
-        ctx.moveTo(-4, shoulderY);
-        ctx.lineTo(-15, -75);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(4, shoulderY);
-        ctx.lineTo(15, -75);
-        ctx.stroke();
-    } else if (state === 'shoot') {
-        // Shooting pose
-        ctx.beginPath();
-        ctx.moveTo(4, shoulderY);
-        ctx.lineTo(25, shoulderY);
-        ctx.stroke();
-        // Projectile
-        ctx.save();
-        ctx.fillStyle = lightColor;
-        ctx.shadowColor = shadowColor;
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.arc(30, shoulderY, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    } else if (state === 'jump') {
-        // Jumping pose
-        ctx.beginPath();
-        ctx.moveTo(-4, shoulderY);
-        ctx.lineTo(-12, -70);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(4, shoulderY);
-        ctx.lineTo(12, -70);
-        ctx.stroke();
-    } else if (state === 'hit') {
-        // Hit reaction
-        ctx.beginPath();
-        ctx.moveTo(-4, shoulderY);
-        ctx.lineTo(-15, -60);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(4, shoulderY);
-        ctx.lineTo(15, -60);
-        ctx.stroke();
-    } else if (state === 'death') {
-        // Death pose - falling
-        const fallProg = progress;
-        ctx.save();
-        ctx.translate(0, fallProg * 30);
-        ctx.rotate(fallProg * 0.5);
-        ctx.beginPath();
-        ctx.moveTo(-4, shoulderY);
-        ctx.lineTo(-12 + fallProg * 10, -60 + fallProg * 20);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(4, shoulderY);
-        ctx.lineTo(12 - fallProg * 10, -60 + fallProg * 20);
-        ctx.stroke();
-        // Legs dangling
-        ctx.beginPath();
-        ctx.moveTo(-3, pelvisY);
-        ctx.lineTo(-10, 0);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(3, pelvisY);
-        ctx.lineTo(10, 0);
-        ctx.stroke();
-        ctx.restore();
-    } else {
-        // Idle/Run default arms
-        const armSwing = state === 'run' ? Math.sin(progress * Math.PI * 2) * 0.3 : Math.sin(progress * Math.PI * 2) * 0.1;
-        ctx.beginPath();
-        ctx.moveTo(-4, shoulderY);
-        ctx.lineTo(-12 + armSwing * 6, -70);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(4, shoulderY);
-        ctx.lineTo(12 - armSwing * 6, -70);
-        ctx.stroke();
-    }
-
-    // Back weapon for Shadow / Assassin / etc.
-    if ((weaponType === 'daggers' || weaponType === 'claws') && state !== 'attack') {
-        const angle = -1.8 + (state === 'run' ? Math.sin(progress * Math.PI * 2) * 0.3 : 0);
-        const armLen = weaponType === 'claws' ? 18 : 21;
-        const lhx = -4 + Math.cos(angle) * armLen;
-        const lhy = shoulderY + Math.sin(angle) * armLen;
-
-        ctx.beginPath();
-        ctx.moveTo(-4, shoulderY);
-        ctx.lineTo(lhx, lhy);
-        ctx.stroke();
-
-        // Weapon
-        const backLen = weaponType === 'claws' ? 25 : 22;
-        const hx = lhx + Math.cos(angle) * 5;
-        const hy = lhy + Math.sin(angle) * 5;
-        const bx = hx + Math.cos(angle) * backLen;
-        const by = hy + Math.sin(angle) * backLen;
-
-        ctx.save();
-        ctx.strokeStyle = lightColor;
-        ctx.shadowColor = shadowColor;
-        ctx.shadowBlur = 12;
-        ctx.lineWidth = weaponType === 'claws' ? 3 : 4;
-        ctx.beginPath();
-        ctx.moveTo(hx, hy);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-        ctx.restore();
-    }
-}
-
-function updateSpriteAnimation(char) {
-    if (!char.useSprites) return;
-
-    // Determine current animation state
-    let newState = 'idle';
-    if (char.hp <= 0) newState = 'death';
-    else if (char.isHitstun > 0) newState = 'hit';
-    else if (char.isAttacking) newState = 'attack';
-    else if (char.isBlocking) newState = 'block';
-    else if (char.isShooting) newState = 'shoot';
-    else if (char.isJumping || char.y > 0) newState = 'jump';
-    else if (char.isMoving) newState = 'run';
-
-    if (char.spriteState !== newState) {
-        char.spriteState = newState;
-        char.spriteFrame = 0;
-        char.spriteTimer = 0;
-    }
-
-    const anim = char.spriteSheets[char.spriteState];
-    if (!anim) return;
-
-    char.spriteTimer++;
-    if (char.spriteTimer >= 60 / anim.frameRate) {
-        char.spriteTimer = 0;
-        char.spriteFrame = (char.spriteFrame + 1) % anim.frames;
-    }
-}
-
-function drawSprite(char, isPlayer) {
-    if (!char.useSprites || !char.spriteSheets[char.spriteState]) {
-        // Fallback to procedural drawing
-        drawFighter(char, isPlayer);
-        return;
-    }
-
-    const anim = char.spriteSheets[char.spriteState];
-    const frameW = char.width;
-    const frameH = char.height;
-    const sx = char.spriteFrame * frameW;
-    const sy = 0;
-
-    ctx.save();
-    ctx.translate(char.x + frameW / 2, (arenaHeight - groundHeight) - char.y);
-    ctx.scale(char.facing, 1);
-
-    // Hit flash effect
-    if (char.hitTimer > 0) {
-        ctx.filter = 'brightness(2)';
-    }
-
-    ctx.drawImage(anim.canvas, sx, sy, frameW, frameH, -frameW / 2, -frameH, frameW, frameH);
-
-    // Draw shield overlay when blocking (even with sprites)
-    if (char.isBlocking) {
-        ctx.save();
-        ctx.lineWidth = 4;
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = char.shadowColor;
-        ctx.strokeStyle = char.lightColor;
-
-        const shieldRadius = char.height * 0.55;
-        const shieldGrad = ctx.createRadialGradient(0, -char.height / 2, 10, 0, -char.height / 2, shieldRadius);
-        shieldGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
-        shieldGrad.addColorStop(1, isPlayer ? "rgba(59, 130, 246, 0.15)" : "rgba(239, 68, 68, 0.15)");
-        ctx.fillStyle = shieldGrad;
-
-        ctx.beginPath();
-        ctx.arc(0, -char.height / 2, shieldRadius, -Math.PI * 0.65, Math.PI * 0.65);
-        ctx.lineTo(0, -char.height / 2);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(0, -char.height / 2, shieldRadius, -Math.PI * 0.65, Math.PI * 0.65);
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    ctx.restore();
-}
-
+// ponytail: procedural vector stickman rendering in drawFighter(). Upgrade to sprite atlas if pixel art imported.
 let selectedPlayerClass = "striker";
 
 // Default player & enemy stats
@@ -1066,13 +575,7 @@ const player = {
     isMoving: false,
     className: "striker",
     knockbackResistance: 1.0,
-    juggleDecay: 0.92,
-    // Sprite animation
-    spriteState: "idle",
-    spriteFrame: 0,
-    spriteTimer: 0,
-    useSprites: false,
-    spriteSheets: {}
+    juggleDecay: 0.92
 };
 
 const enemy = {
@@ -1104,13 +607,7 @@ const enemy = {
     aiState: "chase",
     aiStateTimer: 0,
     knockbackResistance: 1.0,
-    juggleDecay: 0.92,
-    // Sprite animation
-    spriteState: "idle",
-    spriteFrame: 0,
-    spriteTimer: 0,
-    useSprites: false,
-    spriteSheets: {}
+    juggleDecay: 0.92
 };
 
 function applyClassStats(char, className) {
@@ -1131,13 +628,6 @@ function applyClassStats(char, className) {
     char.projectileColor = info.projectileColor;
     char.knockbackResistance = info.knockbackResistance;
     char.juggleDecay = info.juggleDecay;
-
-    // Create procedural sprite sheets
-    char.spriteSheets = createProceduralSpriteSheet(char);
-    char.useSprites = true;
-    char.spriteState = 'idle';
-    char.spriteFrame = 0;
-    char.spriteTimer = 0;
 }
 
 class Particle {
@@ -1535,45 +1025,70 @@ function selectStage(stageName) {
     document.getElementById(cardId).style.borderColor = stage.neonColor;
 }
 
+function handleHitstunPhysics(char) {
+    if (char.isHitstun <= 0 && !char.isJuggling) return false;
+
+    char.isHitstun = Math.max(0, char.isHitstun - 1);
+    char.isBlocking = false;
+    char.isMoving = false;
+
+    char.velocityX *= airDrag;
+    char.x += char.velocityX;
+    char.y += char.velocityY;
+    char.velocityY -= gravity;
+
+    if (char.y <= 0) {
+        char.y = 0;
+        char.velocityY = 0;
+        if (char.isJumping || char.isJuggling) {
+            char.isJumping = false;
+            char.isJuggling = false;
+            char.juggleCount = 0;
+            spawnImpactDust(char.x + char.width / 2, arenaHeight - groundHeight, char.color);
+        }
+    }
+    limitPosition(char);
+    return true;
+}
+
+function applyMovementPhysics(char) {
+    const isGrounded = char.y <= 0;
+    if (char.isBlocking) char.velocityX = 0;
+
+    if (isGrounded) {
+        char.velocityX *= char.isMoving ? groundFriction : 0.68;
+    } else {
+        char.velocityX *= airDrag;
+    }
+
+    char.velocityX = Math.max(-char.speed, Math.min(char.speed, char.velocityX));
+    char.x += char.velocityX;
+    char.animTime += char.isMoving ? Math.abs(char.velocityX) * 0.045 : (char.isJuggling ? 0.02 : 0.035);
+    char.y += char.velocityY;
+    char.velocityY -= gravity;
+
+    if (char.y <= 0) {
+        char.y = 0;
+        char.velocityY = 0;
+        if (char.isJumping || char.isJuggling) {
+            char.isJumping = false;
+            char.isJuggling = false;
+            char.juggleCount = 0;
+            spawnImpactDust(char.x + char.width / 2, arenaHeight - groundHeight, char.color);
+        }
+    }
+    limitPosition(char);
+}
+
 function updatePlayerMovement() {
     if (!gameRunning) return;
 
-    // Pasif EX charge
     player.ex = Math.min(100, player.ex + 0.05);
-
-    const isGrounded = player.y <= 0;
-    const inHitstun = player.isHitstun > 0;
-    const inJuggle = player.isJuggling;
-
-    if (inHitstun || inJuggle) {
-        player.isHitstun = Math.max(0, player.isHitstun - 1);
-        player.isBlocking = false;
-        player.isMoving = false;
-
-        // Air physics during hitstun/juggle
-        player.velocityX *= airDrag;
-        player.x += player.velocityX;
-        player.y += player.velocityY;
-        player.velocityY -= gravity;
-
-        // Ground recovery
-        if (player.y <= 0) {
-            player.y = 0;
-            player.velocityY = 0;
-            if (player.isJumping || inJuggle) {
-                player.isJumping = false;
-                player.isJuggling = false;
-                player.juggleCount = 0;
-                spawnImpactDust(player.x + player.width / 2, arenaHeight - groundHeight, player.color);
-            }
-        }
-        limitPosition(player);
-        return;
-    }
+    if (handleHitstunPhysics(player)) return;
 
     player.isMoving = false;
+    const isGrounded = player.y <= 0;
 
-    // Tangkis/Block dengan menahan tombol S
     if (keys["s"] && isGrounded) {
         player.isBlocking = true;
     } else {
@@ -1599,7 +1114,6 @@ function updatePlayerMovement() {
                 spawnDust(player.x + player.width / 2, arenaHeight - groundHeight);
             }
         } else {
-            // Air control - reduced
             if (keys["a"]) {
                 player.velocityX -= player.speed * 0.08;
                 player.facing = -1;
@@ -1611,38 +1125,8 @@ function updatePlayerMovement() {
         }
     }
 
-    if (player.isBlocking) player.velocityX = 0;
+    applyMovementPhysics(player);
 
-    // Apply friction/drag
-    if (isGrounded) {
-        player.velocityX *= player.isMoving ? groundFriction : 0.68;
-    } else {
-        player.velocityX *= airDrag;
-    }
-
-    player.velocityX = Math.max(-player.speed, Math.min(player.speed, player.velocityX));
-    player.x += player.velocityX;
-    player.animTime += player.isMoving ? Math.abs(player.velocityX) * 0.045 : (inJuggle ? 0.02 : 0.035);
-    player.y += player.velocityY;
-    player.velocityY -= gravity;
-
-    if (player.y <= 0) {
-        player.y = 0;
-        player.velocityY = 0;
-        if (player.isJumping || player.isJuggling) {
-            player.isJumping = false;
-            player.isJuggling = false;
-            player.juggleCount = 0;
-            spawnImpactDust(player.x + player.width / 2, arenaHeight - groundHeight, player.color);
-        }
-    }
-
-    limitPosition(player);
-
-    // Update sprite animation
-    updateSpriteAnimation(player);
-
-    // Serang & Hadouken Player 1
     if (keys["j"]) {
         playerAttack();
         keys["j"] = false;
@@ -1656,42 +1140,12 @@ function updatePlayerMovement() {
 function updateEnemyPlayerMovement() {
     if (!gameRunning) return;
 
-    // Pasif EX charge
     enemy.ex = Math.min(100, enemy.ex + 0.05);
-
-    const isGrounded = enemy.y <= 0;
-    const inHitstun = enemy.isHitstun > 0;
-    const inJuggle = enemy.isJuggling;
-
-    if (inHitstun || inJuggle) {
-        enemy.isHitstun = Math.max(0, enemy.isHitstun - 1);
-        enemy.isBlocking = false;
-        enemy.isMoving = false;
-
-        // Air physics during hitstun/juggle
-        enemy.velocityX *= airDrag;
-        enemy.x += enemy.velocityX;
-        enemy.y += enemy.velocityY;
-        enemy.velocityY -= gravity;
-
-        // Ground recovery
-        if (enemy.y <= 0) {
-            enemy.y = 0;
-            enemy.velocityY = 0;
-            if (enemy.isJumping || inJuggle) {
-                enemy.isJumping = false;
-                enemy.isJuggling = false;
-                enemy.juggleCount = 0;
-                spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
-            }
-        }
-        limitPosition(enemy);
-        return;
-    }
+    if (handleHitstunPhysics(enemy)) return;
 
     enemy.isMoving = false;
+    const isGrounded = enemy.y <= 0;
 
-    // Tangkis/Block dengan menahan tombol ArrowDown
     if (keys["arrowdown"] && isGrounded) {
         enemy.isBlocking = true;
     } else {
@@ -1717,7 +1171,6 @@ function updateEnemyPlayerMovement() {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
             }
         } else {
-            // Air control - reduced
             if (keys["arrowleft"]) {
                 enemy.velocityX -= enemy.speed * 0.08;
                 enemy.facing = -1;
@@ -1729,38 +1182,8 @@ function updateEnemyPlayerMovement() {
         }
     }
 
-    if (enemy.isBlocking) enemy.velocityX = 0;
+    applyMovementPhysics(enemy);
 
-    // Apply friction/drag
-    if (isGrounded) {
-        enemy.velocityX *= enemy.isMoving ? groundFriction : 0.68;
-    } else {
-        enemy.velocityX *= airDrag;
-    }
-
-    enemy.velocityX = Math.max(-enemy.speed, Math.min(enemy.speed, enemy.velocityX));
-    enemy.x += enemy.velocityX;
-    enemy.animTime += enemy.isMoving ? Math.abs(enemy.velocityX) * 0.045 : (inJuggle ? 0.02 : 0.035);
-    enemy.y += enemy.velocityY;
-    enemy.velocityY -= gravity;
-
-    if (enemy.y <= 0) {
-        enemy.y = 0;
-        enemy.velocityY = 0;
-        if (enemy.isJumping || enemy.isJuggling) {
-            enemy.isJumping = false;
-            enemy.isJuggling = false;
-            enemy.juggleCount = 0;
-            spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
-        }
-    }
-
-    limitPosition(enemy);
-
-    // Update sprite animation
-    updateSpriteAnimation(enemy);
-
-    // Serang & Hadouken Player 2
     if (keys["0"]) {
         enemyAttack();
         keys["0"] = false;
@@ -1774,41 +1197,11 @@ function updateEnemyPlayerMovement() {
 function updateEnemyAI() {
     if (!gameRunning) return;
 
-    // Pasif EX charge
     enemy.ex = Math.min(100, enemy.ex + 0.05);
-
-    const isGrounded = enemy.y <= 0;
-    const inHitstun = enemy.isHitstun > 0;
-    const inJuggle = enemy.isJuggling;
-
-    if (inHitstun || inJuggle) {
-        enemy.isHitstun = Math.max(0, enemy.isHitstun - 1);
-        enemy.isBlocking = false;
-        enemy.isMoving = false;
-
-        // Air physics during hitstun/juggle
-        enemy.velocityX *= airDrag;
-        enemy.x += enemy.velocityX;
-        enemy.y += enemy.velocityY;
-        enemy.velocityY -= gravity;
-
-        // Ground recovery
-        if (enemy.y <= 0) {
-            enemy.y = 0;
-            enemy.velocityY = 0;
-            if (enemy.isJumping || inJuggle) {
-                enemy.isJumping = false;
-                enemy.isJuggling = false;
-                enemy.juggleCount = 0;
-                spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
-            }
-        }
-        limitPosition(enemy);
-        return;
-    }
+    if (handleHitstunPhysics(enemy)) return;
 
     enemy.isMoving = false;
-
+    const isGrounded = enemy.y <= 0;
     const distance = getDistance(player, enemy);
     const isEasyMode = gameMode === "1P";
 
@@ -1833,31 +1226,27 @@ function updateEnemyAI() {
         const rand = Math.random();
 
         if (distance > 220) {
-            // Far: more idle in easy mode
             const chaseChance = isEasyMode ? 0.55 : 0.70;
             const shootChance = isEasyMode ? 0.70 : 0.85;
             if (rand < chaseChance) enemy.aiState = "chase";
             else if (rand < shootChance) enemy.aiState = "shoot";
             else enemy.aiState = "idle";
-            enemy.aiStateTimer = 40 + Math.random() * 40; // longer delays in easy
+            enemy.aiStateTimer = 40 + Math.random() * 40;
         } else {
-            // Close range
             if (enemy.attackCooldown) {
-                // More retreat/idle in easy mode
                 const retreatChance = isEasyMode ? 0.60 : 0.50;
                 const idleChance = isEasyMode ? 0.80 : 0.75;
                 if (rand < retreatChance) enemy.aiState = "retreat";
                 else if (rand < idleChance) enemy.aiState = "idle";
                 else enemy.aiState = "chase";
             } else {
-                // Ready to attack - much less aggressive in easy
                 const attackChance = isEasyMode ? 0.20 : 0.35;
                 const defendChance = isEasyMode ? 0.30 : 0.50;
                 if (rand < attackChance) enemy.aiState = "chase";
                 else if (rand < defendChance) enemy.aiState = "defend";
                 else enemy.aiState = "idle";
             }
-            enemy.aiStateTimer = 45 + Math.random() * 50; // longer delays
+            enemy.aiStateTimer = 45 + Math.random() * 50;
         }
     } else {
         enemy.aiStateTimer--;
@@ -1872,21 +1261,18 @@ function updateEnemyAI() {
         }
     }
 
-    if (enemy.aiState === "defend") {
-        enemy.isBlocking = true;
-        return;
-    }
-
     if (player.x < enemy.x) enemy.facing = -1;
     else enemy.facing = 1;
 
-    if (enemy.aiState === "chase") {
+    if (enemy.aiState === "defend") {
+        enemy.isBlocking = true;
+    } else if (enemy.aiState === "chase") {
         const chaseDistance = isEasyMode ? 130 : 110;
         const attackChance = isEasyMode ? 0.45 : 0.70;
 
         if (distance > chaseDistance) {
             enemy.isMoving = true;
-            enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.18; // slower approach
+            enemy.velocityX += (player.x < enemy.x ? -1 : 1) * enemy.speed * 0.18;
 
             if (Math.random() < 0.02 && !enemy.isJumping && isGrounded) {
                 spawnDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight);
@@ -1907,32 +1293,7 @@ function updateEnemyAI() {
         enemy.isMoving = false;
     }
 
-    // AI physics
-    if (enemy.isBlocking) enemy.velocityX = 0;
-    if (isGrounded) {
-        enemy.velocityX *= enemy.isMoving ? groundFriction : 0.68;
-    } else {
-        enemy.velocityX *= airDrag;
-    }
-    enemy.velocityX = Math.max(-enemy.speed, Math.min(enemy.speed, enemy.velocityX));
-    enemy.x += enemy.velocityX;
-    enemy.animTime += enemy.isMoving ? Math.abs(enemy.velocityX) * 0.045 : 0.035;
-    enemy.y += enemy.velocityY;
-    enemy.velocityY -= gravity;
-
-    if (enemy.y <= 0) {
-        enemy.y = 0;
-        enemy.velocityY = 0;
-        if (enemy.isJumping) {
-            enemy.isJumping = false;
-            spawnImpactDust(enemy.x + enemy.width / 2, arenaHeight - groundHeight, enemy.color);
-        }
-    }
-
-    limitPosition(enemy);
-
-    // Update sprite animation
-    updateSpriteAnimation(enemy);
+    applyMovementPhysics(enemy);
 }
 
 function playerAttack() {
@@ -2926,6 +2287,7 @@ function render() {
             damageNumbers[i].draw();
         }
     }
+    ctx.restore();
 }
 
 function gameLoop() {
@@ -3001,7 +2363,7 @@ function restartGame() {
 
     // Assign enemy class berdasarkan mode
     if (gameMode === "1P") {
-        const classes = ["striker", "titan", "shadow"];
+        const classes = Object.keys(CHARACTER_CLASSES);
         const randomClass = classes[Math.floor(Math.random() * classes.length)];
         applyClassStats(enemy, randomClass);
     } else {
@@ -3065,9 +2427,10 @@ function restartGame() {
     koSlowMoTarget = null;
     if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
     roundTimerInterval = setInterval(() => {
-        if (gameRunning && !roundOver && roundTimer > 0) {
+        if (gameRunning && !roundOver && !isPaused && !isCountingDown && roundTimer > 0) {
             roundTimer--;
             statusText.textContent = `${roundTimer}`;
+            if (roundTimer <= 0) checkWinner();
         }
     }, 1000);
 
