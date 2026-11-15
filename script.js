@@ -11,7 +11,6 @@ const enemyClassNameElement = document.getElementById("enemyClassName");
 const playerRoundsContainer = document.getElementById("playerRounds");
 const enemyRoundsContainer = document.getElementById("enemyRounds");
 const statusText = document.getElementById("statusText");
-const hitFlashElement = document.getElementById("hitFlash");
 
 // DOM Menu & Modal elements
 const mainMenu = document.getElementById("mainMenu");
@@ -414,11 +413,7 @@ function playSound(type) {
 }
 
 function triggerHitFlash() {
-    if (hitFlashElement) {
-        hitFlashElement.classList.remove("active");
-        hitFlashElement.offsetWidth;
-        hitFlashElement.classList.add("active");
-    }
+    // Screen flash disabled: caused distracting flicker on every hit.
 }
 
 // Character classes specifications
@@ -1868,7 +1863,7 @@ function showGameOver(message) {
         gameOverTitle.style.webkitBackgroundClip = "text";
         gameOverTitle.style.webkitTextFillColor = "transparent";
     }
-    setTimeout(() => {
+    scheduleTimeout(() => {
         gameOverMenu.classList.remove("hidden");
         clearKeys();
     }, 1000);
@@ -2354,15 +2349,9 @@ function drawFighter(char, isPlayer) {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    if (char.hitTimer > 0) {
-        ctx.strokeStyle = "#ffffff";
-        ctx.shadowColor = "#ffffff";
-        ctx.shadowBlur = 20;
-    } else {
-        ctx.strokeStyle = primaryColor;
-        ctx.shadowColor = shadowColor;
-        ctx.shadowBlur = 15;
-    }
+    ctx.strokeStyle = primaryColor;
+    ctx.shadowColor = shadowColor;
+    ctx.shadowBlur = char.hitTimer > 0 ? 22 : 15;
 
     // 1. Draw energy shield if blocking
     if (char.isBlocking) {
