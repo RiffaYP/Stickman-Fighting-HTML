@@ -34,6 +34,58 @@ body {
     animation: statusPulse 2s infinite;
 }
 
+.timer-display {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 30px;
+    font-weight: 900;
+    min-width: 64px;
+    text-align: center;
+    color: #facc15;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(250, 204, 21, 0.6);
+    transition: color 0.2s, transform 0.2s;
+}
+
+.timer-display.timer-low {
+    color: #ef4444;
+    text-shadow: 0 0 14px rgba(239, 68, 68, 0.9);
+    animation: timerLowPulse 1s infinite;
+}
+
+@keyframes timerLowPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+
+/* Status banner inside arena */
+.status-banner {
+    position: absolute;
+    top: 42%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 34px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #facc15;
+    text-align: center;
+    text-shadow: 0 0 16px rgba(250, 204, 21, 0.8), 0 0 32px rgba(250, 204, 21, 0.4);
+    pointer-events: none;
+    z-index: 45;
+    white-space: nowrap;
+    opacity: 0;
+    padding: 0 20px;
+}
+
+.status-banner.status-banner-show {
+    animation: statusBannerPop 0.4s ease-out forwards;
+}
+
+@keyframes statusBannerPop {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
 @keyframes statusPulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.7; transform: scale(1.05); }
@@ -601,41 +653,19 @@ h1 {
     width: 100%;
 }
 
-.char-glow-dot {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    margin-bottom: 10px;
+.char-preview-canvas {
+    width: 90px;
+    height: 130px;
+    margin-bottom: 8px;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05), transparent 70%);
+    border-radius: 10px;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.1));
+    transition: transform 0.25s ease, filter 0.25s ease;
 }
 
-.blue-glow {
-    background-color: #3b82f6;
-    box-shadow: 0 0 15px #3b82f6;
-}
-
-.green-glow {
-    background-color: #22c55e;
-    box-shadow: 0 0 15px #22c55e;
-}
-
-.purple-glow {
-    background-color: #a855f7;
-    box-shadow: 0 0 15px #a855f7;
-}
-
-.orange-glow {
-    background-color: #f97316;
-    box-shadow: 0 0 15px #f97316;
-}
-
-.lime-glow {
-    background-color: #84cc16;
-    box-shadow: 0 0 15px #84cc16;
-}
-
-.pink-glow {
-    background-color: #ec4899;
-    box-shadow: 0 0 15px #ec4899;
+.char-card:hover .char-preview-canvas {
+    transform: scale(1.08) translateY(-3px);
+    filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.25));
 }
 
 .char-card h3 {
@@ -837,4 +867,93 @@ h1 {
     .touch-controls {
         display: flex;
     }
+}
+
+/* ==========================================
+   STAGE SELECT
+   ========================================== */
+.stage-select-section {
+    margin-top: 25px;
+}
+
+.stage-select-title {
+    margin-bottom: 15px;
+    color: #facc15 !important;
+}
+
+.stage-cards {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.stage-card {
+    background: rgba(17, 24, 39, 0.85);
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 15px 25px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 140px;
+}
+
+.stage-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 255, 255, 0.35);
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.15);
+}
+
+.stage-card.selected {
+    border-color: #facc15 !important;
+    box-shadow: 0 0 22px rgba(250, 204, 21, 0.45);
+}
+
+.stage-preview {
+    width: 60px;
+    height: 35px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.stage-card h4 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+}
+
+.stage-preview-neon {
+    background: linear-gradient(180deg, #0b0f1a, #111827);
+    border: 1px solid #3b82f6;
+}
+
+.stage-preview-neon+h4 { color: #60a5fa; }
+
+.stage-preview-dojo {
+    background: linear-gradient(180deg, #1c1917, #292524);
+    border: 1px solid #f97316;
+}
+
+.stage-preview-dojo+h4 { color: #fb923c; }
+
+.stage-preview-void {
+    background: linear-gradient(180deg, #050505, #0f0f0f);
+    border: 1px solid #a855f7;
+}
+
+.stage-preview-void+h4 { color: #d8b4fe; }
+
+.stage-preview-sunset {
+    background: linear-gradient(180deg, #7c2d12, #9a3412);
+    border: 1px solid #fbbf24;
+}
+
+.stage-preview-sunset+h4 { color: #fde047; }
+
+.btn-back {
+    margin-top: 20px;
+    max-width: 200px;
 }

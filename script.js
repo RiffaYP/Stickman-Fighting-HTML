@@ -1,6 +1,7 @@
 const arena = document.getElementById("arena");
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+const gameCanvas = document.getElementById("gameCanvas");
+const gameCtx = gameCanvas.getContext("2d");
+let ctx = gameCtx;
 
 const playerHealthElement = document.getElementById("playerHealth");
 const enemyHealthElement = document.getElementById("enemyHealth");
@@ -10,7 +11,29 @@ const playerClassNameElement = document.getElementById("playerClassName");
 const enemyClassNameElement = document.getElementById("enemyClassName");
 const playerRoundsContainer = document.getElementById("playerRounds");
 const enemyRoundsContainer = document.getElementById("enemyRounds");
-const statusText = document.getElementById("statusText");
+const timerDisplay = document.getElementById("timerDisplay");
+const statusBanner = document.getElementById("statusBanner");
+
+let statusBannerTimeout = null;
+function setStatus(message, duration = 1600) {
+    if (!statusBanner) return;
+    statusBanner.textContent = message;
+    statusBanner.classList.remove("hidden");
+    statusBanner.classList.remove("status-banner-show");
+    void statusBanner.offsetWidth;
+    statusBanner.classList.add("status-banner-show");
+    if (statusBannerTimeout) clearTimeout(statusBannerTimeout);
+    if (duration > 0) {
+        statusBannerTimeout = setTimeout(() => {
+            statusBanner.classList.add("hidden");
+        }, duration);
+    }
+}
+function clearStatus() {
+    if (statusBannerTimeout) clearTimeout(statusBannerTimeout);
+    statusBannerTimeout = null;
+    if (statusBanner) statusBanner.classList.add("hidden");
+}
 
 // DOM Menu & Modal elements
 const mainMenu = document.getElementById("mainMenu");
@@ -49,6 +72,65 @@ const terminalVelocity = -16;
 const airDrag = 0.97;
 const groundMoveFriction = 0.86;
 const groundStopFriction = 0.45;
+
+// Live character previews in the select screen (reuse drawFighter with a custom ctx)
+const previewCanvases = [];
+let previewAnimRAF = null;
+
+function renderFighterPreview(previewCtx, char, t) {
+    const w = 90;
+    const h = 130;
+    previewCtx.clearRect(0, 0, w, h);
+    char.animTime = t;
+    char.isMoving = false;
+    char.isAttacking = false;
+    char.isBlocking = false;
+    char.isShooting = false;
+    char.isHitstun = 0;
+    char.hitTimer = 0;
+    char.isJumping = false;
+    char.y = 0;
+    char.facing = 1;
+
+    const prevCtx = ctx;
+    const prevW = arenaWidth;
+    const prevH = arenaHeight;
+    ctx = previewCtx;
+    arenaWidth = w;
+    arenaHeight = h;
+    previewCtx.save();
+    previewCtx.translate(0, -4);
+    drawFighter(char, true, w / 2);
+    previewCtx.restore();
+    ctx = prevCtx;
+    arenaWidth = prevW;
+    arenaHeight = prevH;
+}
+
+function initPreviews() {
+    if (previewCanvases.length) return;
+    document.querySelectorAll(".char-preview-canvas").forEach(canvas => {
+        const className = canvas.dataset.class;
+        const pctx = canvas.getContext("2d");
+        const dpr = window.devicePixelRatio || 1;
+        const w = 90, h = 130;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        pctx.scale(dpr, dpr);
+        const dummy = {};
+        applyClassStats(dummy, className);
+        previewCanvases.push({ ctx: pctx, char: dummy, w, h });
+    });
+    let t = 0;
+    function loop() {
+        t += 0.06;
+        previewCanvases.forEach(p => {
+            renderFighterPreview(p.ctx, p.char, t);
+        });
+        previewAnimRAF = requestAnimationFrame(loop);
+    }
+    loop();
+}
 
 // Game states
 let gameRunning = false;
@@ -775,11 +857,11 @@ function resizeCanvas() {
     arenaHeight = rect.height || 450;
 
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = arenaWidth * dpr;
-    canvas.height = arenaHeight * dpr;
+    gameCanvas.width = arenaWidth * dpr;
+    gameCanvas.height = arenaHeight * dpr;
 
-    ctx.resetTransform();
-    ctx.scale(dpr, dpr);
+    gameCtx.resetTransform();
+    gameCtx.scale(dpr, dpr);
 }
 
 // Initial setup
@@ -861,7 +943,6 @@ function startCountdown(callback, roundTitle) {
     function runNumbers() {
         if (count > 0) {
             countdownText.textContent = count;
-            statusText.textContent = count;
             playCountdownSound();
 
             countdownText.style.animation = 'none';
@@ -872,7 +953,6 @@ function startCountdown(callback, roundTitle) {
             scheduleTimeout(runNumbers, 850);
         } else {
             countdownText.textContent = "MULAI!";
-            statusText.textContent = "FIGHT!";
             playCountdownFinalSound();
 
             countdownText.style.animation = 'none';
@@ -889,7 +969,6 @@ function startCountdown(callback, roundTitle) {
 
     if (roundTitle) {
         countdownText.textContent = roundTitle;
-        statusText.textContent = roundTitle;
         playCountdownSound();
         scheduleTimeout(runNumbers, 900);
     } else {
@@ -994,6 +1073,7 @@ btnStart1P.addEventListener("click", function () {
     charSelectTitle.textContent = "PLAYER 1: SELECT CHARACTER";
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
     charSelectMenu.classList.remove("hidden");
+    initPreviews();
 });
 
 btnStart2P.addEventListener("click", function () {
@@ -1003,6 +1083,7 @@ btnStart2P.addEventListener("click", function () {
     charSelectTitle.textContent = "PLAYER 1: SELECT CHARACTER";
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
     charSelectMenu.classList.remove("hidden");
+    initPreviews();
 });
 
 btnHowToPlay.addEventListener("click", function () {
@@ -1097,11 +1178,8 @@ function selectChar(className) {
 function selectStage(stageName) {
     selectedStage = stageName;
     document.querySelectorAll(".stage-card").forEach(card => {
-        card.style.borderColor = "rgba(255, 255, 255, 0.1)";
+        card.classList.toggle("selected", card.dataset.stage === stageName);
     });
-    const stage = STAGES[stageName];
-    const cardId = `cardStage${stageName.charAt(0).toUpperCase() + stageName.slice(1)}`;
-    document.getElementById(cardId).style.borderColor = stage.neonColor;
 }
 
 function handleHitstunPhysics(char) {
@@ -1182,7 +1260,7 @@ function triggerGuardCrush(char) {
     spawnImpactDust(sparkX, sparkY, "#ef4444");
     screenShake = 16;
     damageNumbers.push(new DamageNumber(sparkX, sparkY - 30, "CRUSH!", true));
-    statusText.textContent = "GUARD CRUSH!";
+    setStatus("GUARD CRUSH!", 1200);
 }
 
 function updatePlayerMovement() {
@@ -1901,11 +1979,11 @@ function handleRoundEnd() {
 
     if (playerRoundsWon >= 2 || enemyRoundsWon >= 2) {
         const msg = `${winnerLabel} WINS MATCH!`;
-        statusText.textContent = msg;
+        setStatus(msg, 0);
         showGameOver(msg);
     } else {
         const msg = `${winnerLabel} WINS ROUND ${currentRound}!`;
-        statusText.textContent = msg;
+        setStatus(msg, 1500);
         scheduleTimeout(() => {
             startNextRound();
         }, 1500);
@@ -1985,12 +2063,19 @@ function startNextRound() {
     }, `ROUND ${currentRound}`);
 }
 
+function updateTimerDisplay() {
+    if (!timerDisplay) return;
+    timerDisplay.textContent = roundTimer;
+    timerDisplay.classList.toggle("timer-low", roundTimer <= 10);
+}
+
 function startRoundTimer() {
     if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
+    updateTimerDisplay();
     roundTimerInterval = setInterval(() => {
         if (gameRunning && !roundOver && !isPaused && !isCountingDown && roundTimer > 0) {
             roundTimer--;
-            statusText.textContent = `${roundTimer}`;
+            updateTimerDisplay();
             if (roundTimer <= 0) checkWinner();
         }
     }, 1000);
@@ -2325,10 +2410,10 @@ function drawProjectiles() {
     }
 }
 
-function drawFighter(char, isPlayer) {
+function drawFighter(char, isPlayer, overrideCenterX = null) {
     const groundY = arenaHeight - groundHeight;
-    const centerX = char.x + char.width / 2;
     const bottomY = groundY - char.y;
+    const centerX = overrideCenterX != null ? overrideCenterX : char.x + char.width / 2;
     const armLength = 25;
 
     ctx.save();
@@ -2886,6 +2971,7 @@ function restartGame() {
     roundTimer = 99;
     koSlowMo = 0;
     koSlowMoTarget = null;
+    clearStatus();
     startRoundTimer();
 
     gameRunning = true;
@@ -2894,8 +2980,6 @@ function restartGame() {
 
     if (!inMainMenu) {
         startCountdown(() => { gameRunning = true; }, "ROUND 1");
-    } else {
-        statusText.textContent = "FIGHT!";
     }
 }
 
