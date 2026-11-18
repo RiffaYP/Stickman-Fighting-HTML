@@ -772,6 +772,8 @@ const enemy = {
 function applyClassStats(char, className) {
     char.className = className;
     const info = CHARACTER_CLASSES[className];
+    if (char.width == null) char.width = 70;
+    if (char.height == null) char.height = 130;
     char.maxHp = info.maxHp;
     char.hp = info.maxHp;
     char.targetHp = info.maxHp;
