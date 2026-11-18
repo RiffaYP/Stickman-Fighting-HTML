@@ -496,15 +496,25 @@ const touchState = {
     p2: { joystick: { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 }, buttons: {} }
 };
 
+let touchControlsReady = false;
+
 function initTouchControls() {
     const touchControls = document.getElementById('touchControls');
     const isMobile = /Mobi|Android/i.test(navigator.userAgent) || window.innerWidth <= 768;
 
     if (isMobile && !inMainMenu) {
         touchControls.classList.remove('hidden');
-        setupJoystick('p1Joystick', 'p1');
-        setupJoystick('p2Joystick', 'p2');
-        setupTouchButtons();
+        // Show P2 controls only in local 2P mode
+        const showP2 = gameMode === "2P";
+        document.getElementById('p2Joystick').style.display = showP2 ? "" : "none";
+        document.querySelector('.p2-buttons').style.display = showP2 ? "" : "none";
+
+        if (!touchControlsReady) {
+            setupJoystick('p1Joystick', 'p1');
+            setupJoystick('p2Joystick', 'p2');
+            setupTouchButtons();
+            touchControlsReady = true;
+        }
     } else {
         touchControls.classList.add('hidden');
     }
@@ -513,15 +523,14 @@ function initTouchControls() {
 function setupJoystick(joystickId, player) {
     const joystick = document.getElementById(joystickId);
     const stick = joystick.querySelector('.joystick-stick');
-    const base = joystick.querySelector('.joystick-base');
-    const rect = joystick.getBoundingClientRect();
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const maxDist = 45;
 
-    function updateStick(x, y) {
-        const dx = x - centerX;
-        const dy = y - centerY;
+    function updateStick(clientX, clientY) {
+        const rect = joystick.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const maxDist = 45;
+        const dx = clientX - rect.left - centerX;
+        const dy = clientY - rect.top - centerY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx);
         const clampedDist = Math.min(dist, maxDist);
@@ -561,16 +570,14 @@ function setupJoystick(joystickId, player) {
         e.preventDefault();
         touchState[player].joystick.active = true;
         const touch = e.touches[0];
-        const rect = joystick.getBoundingClientRect();
-        updateStick(touch.clientX - rect.left, touch.clientY - rect.top);
+        updateStick(touch.clientX, touch.clientY);
     }, { passive: false });
 
     joystick.addEventListener('touchmove', (e) => {
         e.preventDefault();
         if (!touchState[player].joystick.active) return;
         const touch = e.touches[0];
-        const rect = joystick.getBoundingClientRect();
-        updateStick(touch.clientX - rect.left, touch.clientY - rect.top);
+        updateStick(touch.clientX, touch.clientY);
     }, { passive: false });
 
     joystick.addEventListener('touchend', (e) => {
