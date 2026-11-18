@@ -108,11 +108,20 @@ function renderFighterPreview(previewCtx, char, t) {
     const prevW = arenaWidth;
     const prevH = arenaHeight;
     ctx = previewCtx;
-    arenaWidth = w;
-    arenaHeight = h;
     previewCtx.save();
-    previewCtx.translate(0, -4);
-    drawFighter(char, true, w / 2);
+    // Scale fighter so body + weapon fit. Fighter faces right, blade sticks out
+    // only on one side, so budget width = reach on the blade side.
+    const reach = 4 + 25 + 8 + (char.bladeLength || 45) + 12;
+    const bodyH = (char.height || 130) + 12;
+    const scale = Math.min((w - 6) / reach, (h - 8) / (bodyH + 40));
+    previewCtx.scale(scale, scale);
+    const scaledW = w / scale;
+    const scaledH = h / scale;
+    arenaWidth = scaledW;
+    arenaHeight = scaledH;
+    // Shift body left so the right-side weapon stays inside the canvas
+    const centerOffset = reach / 2 - 20;
+    drawFighter(char, true, scaledW / 2 - centerOffset);
     previewCtx.restore();
     ctx = prevCtx;
     arenaWidth = prevW;
