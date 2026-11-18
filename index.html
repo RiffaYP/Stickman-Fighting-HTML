@@ -73,10 +73,10 @@
                     <div class="joystick-stick"></div>
                 </div>
                 <div class="touch-buttons p1-buttons">
-                    <button class="touch-btn" data-action="p1-attack" data-key="j"><span>👊</span></button>
-                    <button class="touch-btn" data-action="p1-special" data-key="k"><span>⚡</span></button>
-                    <button class="touch-btn" data-action="p1-block" data-key="s"><span>🛡</span></button>
-                    <button class="touch-btn" data-action="p1-jump" data-key="w"><span>⬆</span></button>
+                    <button class="touch-btn" data-action="p1-attack" data-key="j" aria-label="P1 Attack"><span>👊</span></button>
+                    <button class="touch-btn" data-action="p1-special" data-key="k" aria-label="P1 EX Skill"><span>⚡</span></button>
+                    <button class="touch-btn" data-action="p1-block" data-key="s" aria-label="P1 Block"><span>🛡</span></button>
+                    <button class="touch-btn" data-action="p1-jump" data-key="w" aria-label="P1 Jump"><span>⬆</span></button>
                 </div>
 
                 <!-- P2 Controls (Right Side) - for 2P mode -->
@@ -85,10 +85,10 @@
                     <div class="joystick-stick"></div>
                 </div>
                 <div class="touch-buttons p2-buttons">
-                    <button class="touch-btn" data-action="p2-attack" data-key="0"><span>👊</span></button>
-                    <button class="touch-btn" data-action="p2-special" data-key="1"><span>⚡</span></button>
-                    <button class="touch-btn" data-action="p2-block" data-key="arrowdown"><span>🛡</span></button>
-                    <button class="touch-btn" data-action="p2-jump" data-key="arrowup"><span>⬆</span></button>
+                    <button class="touch-btn" data-action="p2-attack" data-key="0" aria-label="P2 Attack"><span>👊</span></button>
+                    <button class="touch-btn" data-action="p2-special" data-key="1" aria-label="P2 EX Skill"><span>⚡</span></button>
+                    <button class="touch-btn" data-action="p2-block" data-key="arrowdown" aria-label="P2 Block"><span>🛡</span></button>
+                    <button class="touch-btn" data-action="p2-jump" data-key="arrowup" aria-label="P2 Jump"><span>⬆</span></button>
                 </div>
             </div>
         </div>
@@ -108,6 +108,7 @@
                 <button id="btnStart1P" class="btn btn-primary">1 Player (vs CPU)</button>
                 <button id="btnStart2P" class="btn btn-secondary">2 Players (Local)</button>
                 <button id="btnHowToPlay" class="btn btn-secondary">How to Play</button>
+                <button id="btnSettings" class="btn btn-secondary">Settings</button>
             </div>
         </div>
     </div>
@@ -118,7 +119,7 @@
             <h1 id="charSelectTitle" class="menu-title">SELECT CHARACTER</h1>
             <p id="charSelectSubtitle" class="menu-subtitle">Pilih Kelas Pertarungan Anda</p>
             <div class="char-cards">
-                <div class="char-card" data-class="striker" id="cardStriker">
+                <div class="char-card" data-class="striker" id="cardStriker" role="button" tabindex="0" aria-label="Select Striker">
                     <div class="char-preview-box">
                         <canvas class="char-preview-canvas" data-class="striker" width="90" height="130"></canvas>
                         <h3>STRIKER</h3>
@@ -142,7 +143,7 @@
                         <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Saber</span></div>
                     </div>
                 </div>
-                <div class="char-card" data-class="titan" id="cardTitan">
+                <div class="char-card" data-class="titan" id="cardTitan" role="button" tabindex="0" aria-label="Select Titan">
                     <div class="char-preview-box">
                         <canvas class="char-preview-canvas" data-class="titan" width="90" height="130"></canvas>
                         <h3>TITAN</h3>
@@ -166,7 +167,7 @@
                         <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Greatsword</span></div>
                     </div>
                 </div>
-                <div class="char-card" data-class="shadow" id="cardShadow">
+                <div class="char-card" data-class="shadow" id="cardShadow" role="button" tabindex="0" aria-label="Select Shadow">
                     <div class="char-preview-box">
                         <canvas class="char-preview-canvas" data-class="shadow" width="90" height="130"></canvas>
                         <h3>SHADOW</h3>
@@ -190,7 +191,7 @@
                         <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Twin Daggers</span></div>
                     </div>
                 </div>
-                <div class="char-card" data-class="mage" id="cardMage">
+                <div class="char-card" data-class="mage" id="cardMage" role="button" tabindex="0" aria-label="Select Mage">
                     <div class="char-preview-box">
                         <canvas class="char-preview-canvas" data-class="mage" width="90" height="130"></canvas>
                         <h3>MAGE</h3>
@@ -214,7 +215,7 @@
                         <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Staff</span></div>
                     </div>
                 </div>
-                <div class="char-card" data-class="wrestler" id="cardWrestler">
+                <div class="char-card" data-class="wrestler" id="cardWrestler" role="button" tabindex="0" aria-label="Select Wrestler">
                     <div class="char-preview-box">
                         <canvas class="char-preview-canvas" data-class="wrestler" width="90" height="130"></canvas>
                         <h3>WRESTLER</h3>
@@ -238,7 +239,7 @@
                         <div class="stat-line"><span>WEAPON</span> <span class="stat-val">Gauntlets</span></div>
                     </div>
                 </div>
-                <div class="char-card" data-class="assassin" id="cardAssassin">
+                <div class="char-card" data-class="assassin" id="cardAssassin" role="button" tabindex="0" aria-label="Select Assassin">
                     <div class="char-preview-box">
                         <canvas class="char-preview-canvas" data-class="assassin" width="90" height="130"></canvas>
                         <h3>ASSASSIN</h3>
@@ -267,19 +268,19 @@
             <div class="stage-select-section">
                 <h3 id="stageSelectTitle" class="menu-subtitle stage-select-title">SELECT STAGE</h3>
                 <div class="stage-cards">
-                    <div class="stage-card" data-stage="neon" id="cardStageNeon">
+                    <div class="stage-card" data-stage="neon" id="cardStageNeon" role="button" tabindex="0" aria-label="Select Neon City stage">
                         <div class="stage-preview stage-preview-neon"></div>
                         <h4>NEON CITY</h4>
                     </div>
-                    <div class="stage-card" data-stage="dojo" id="cardStageDojo">
+                    <div class="stage-card" data-stage="dojo" id="cardStageDojo" role="button" tabindex="0" aria-label="Select Ancient Dojo stage">
                         <div class="stage-preview stage-preview-dojo"></div>
                         <h4>ANCIENT DOJO</h4>
                     </div>
-                    <div class="stage-card" data-stage="void" id="cardStageVoid">
+                    <div class="stage-card" data-stage="void" id="cardStageVoid" role="button" tabindex="0" aria-label="Select Void Arena stage">
                         <div class="stage-preview stage-preview-void"></div>
                         <h4>VOID ARENA</h4>
                     </div>
-                    <div class="stage-card" data-stage="sunset" id="cardStageSunset">
+                    <div class="stage-card" data-stage="sunset" id="cardStageSunset" role="button" tabindex="0" aria-label="Select Sunset Rooftop stage">
                         <div class="stage-preview stage-preview-sunset"></div>
                         <h4>SUNSET ROOFTOP</h4>
                     </div>
@@ -318,11 +319,10 @@
                     </div>
                 </div>
             </div>
-            <div
-                style="margin-top: 15px; font-size: 13px; color: #9ca3af; border-top: 1px solid #374151; padding-top: 10px; text-align: center;">
+            <div class="modal-footer-note">
                 <p><b>P</b> Pause Game &nbsp;|&nbsp; <b>R</b> Restart Game</p>
             </div>
-            <button id="btnCloseModal" class="btn btn-danger" style="margin-top: 15px;">Close</button>
+            <button id="btnCloseModal" class="btn btn-danger btn-modal-close">Close</button>
         </div>
     </div>
 
@@ -333,8 +333,47 @@
             <div class="menu-buttons">
                 <button id="btnResume" class="btn btn-primary">Resume</button>
                 <button id="btnRestart" class="btn btn-secondary">Restart</button>
+                <button id="btnChangeChar" class="btn btn-secondary">Change Character / Stage</button>
+                <button id="btnPauseSettings" class="btn btn-secondary">Settings</button>
                 <button id="btnMainMenu" class="btn btn-danger">Main Menu</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2>Settings</h2>
+            <div class="settings-list">
+                <label class="setting-item">
+                    <span>Master Volume</span>
+                    <input type="range" id="settingVolume" min="0" max="100" step="5" value="80">
+                </label>
+                <label class="setting-item">
+                    <span>Mute Sound</span>
+                    <input type="checkbox" id="settingMute" class="setting-toggle">
+                </label>
+                <label class="setting-item">
+                    <span>Screen Shake</span>
+                    <input type="checkbox" id="settingShake" class="setting-toggle">
+                </label>
+                <label class="setting-item">
+                    <span>Round Time</span>
+                    <select id="settingRoundTime" class="setting-select">
+                        <option value="60">60s</option>
+                        <option value="99">99s</option>
+                        <option value="120">120s</option>
+                    </select>
+                </label>
+                <label class="setting-item">
+                    <span>CPU Difficulty (1P)</span>
+                    <select id="settingDifficulty" class="setting-select">
+                        <option value="easy">Easy</option>
+                        <option value="normal">Normal</option>
+                    </select>
+                </label>
+            </div>
+            <button id="btnCloseSettings" class="btn btn-primary btn-modal-close">Done</button>
         </div>
     </div>
 

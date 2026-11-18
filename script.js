@@ -63,6 +63,18 @@ const gameOverResult = document.getElementById("gameOverResult");
 const btnGameOverRestart = document.getElementById("btnGameOverRestart");
 const btnGameOverMainMenu = document.getElementById("btnGameOverMainMenu");
 
+// Settings UI
+const settingsModal = document.getElementById("settingsModal");
+const btnSettings = document.getElementById("btnSettings");
+const btnPauseSettings = document.getElementById("btnPauseSettings");
+const btnCloseSettings = document.getElementById("btnCloseSettings");
+const settingVolume = document.getElementById("settingVolume");
+const settingMute = document.getElementById("settingMute");
+const settingShake = document.getElementById("settingShake");
+const settingRoundTime = document.getElementById("settingRoundTime");
+const settingDifficulty = document.getElementById("settingDifficulty");
+const btnChangeChar = document.getElementById("btnChangeChar");
+
 const keys = {};
 
 const groundHeight = 45;
@@ -130,6 +142,31 @@ function initPreviews() {
         previewAnimRAF = requestAnimationFrame(loop);
     }
     loop();
+}
+
+// Settings (persisted)
+const SETTINGS_KEY = "neonFighter.settings";
+const DEFAULT_SETTINGS = { volume: 0.8, muted: false, screenShake: true, roundTime: 99, difficulty: "easy" };
+let settings = loadSettings();
+
+function loadSettings() {
+    try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return { ...DEFAULT_SETTINGS };
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    } catch (e) {
+        return { ...DEFAULT_SETTINGS };
+    }
+}
+
+function saveSettings() {
+    try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) { /* ponytail: storage unavailable (private mode) — settings stay in memory */ }
+}
+
+function applySettings() {
+    masterGain.gain.value = settings.muted ? 0 : settings.volume;
 }
 
 // Game states
@@ -380,11 +417,14 @@ window.addEventListener('resize', () => {
 // Audio Synthesizer (Web Audio API)
 // ponytail: synth Sfx via Web Audio API. Upgrade to audio assets if custom sounds needed.
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.connect(audioCtx.destination);
 document.addEventListener('click', () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
 }, { once: true });
 
 function playSound(type) {
+    if (settings.muted) return;
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
@@ -396,7 +436,7 @@ function playSound(type) {
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
         osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        gainNode.connect(masterGain);
 
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(150, now);
@@ -413,7 +453,7 @@ function playSound(type) {
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
         osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        gainNode.connect(masterGain);
 
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(220, now);
@@ -429,7 +469,7 @@ function playSound(type) {
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
         osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        gainNode.connect(masterGain);
 
         osc.type = 'sine';
         osc.frequency.setValueAtTime(1300, now);
@@ -445,7 +485,7 @@ function playSound(type) {
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
         osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        gainNode.connect(masterGain);
 
         osc.type = 'sine';
         osc.frequency.setValueAtTime(950, now);
@@ -461,7 +501,7 @@ function playSound(type) {
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
         osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        gainNode.connect(masterGain);
 
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(100, now);
@@ -479,7 +519,7 @@ function playSound(type) {
             const oscNode = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
             oscNode.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
+            gainNode.connect(masterGain);
 
             oscNode.type = 'sine';
             oscNode.frequency.setValueAtTime(freq, now + idx * 0.09);
@@ -891,7 +931,7 @@ function playCountdownSound() {
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(masterGain);
     osc.type = 'sine';
     osc.frequency.setValueAtTime(880, now);
     osc.frequency.exponentialRampToValueAtTime(440, now + 0.15);
@@ -906,7 +946,7 @@ function playCountdownFinalSound() {
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(masterGain);
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(660, now);
     osc.frequency.exponentialRampToValueAtTime(1320, now + 0.1);
@@ -1146,11 +1186,78 @@ document.getElementById("cardStageDojo").addEventListener("click", () => selectS
 document.getElementById("cardStageVoid").addEventListener("click", () => selectStage("void"));
 document.getElementById("cardStageSunset").addEventListener("click", () => selectStage("sunset"));
 
+// Keyboard activation for role="button" cards (Enter / Space)
+document.querySelectorAll('.char-card[role="button"], .stage-card[role="button"]').forEach(card => {
+    card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            card.click();
+        }
+    });
+});
+
 btnBackToMenu.addEventListener("click", () => {
     charSelectMenu.classList.add("hidden");
     mainMenu.classList.remove("hidden");
     inMainMenu = true;
 });
+
+// Settings wiring
+function syncSettingsUI() {
+    settingVolume.value = Math.round(settings.volume * 100);
+    settingMute.checked = settings.muted;
+    settingShake.checked = settings.screenShake;
+    settingRoundTime.value = String(settings.roundTime);
+    settingDifficulty.value = settings.difficulty;
+}
+
+function openSettings() {
+    syncSettingsUI();
+    settingsModal.classList.remove("hidden");
+}
+
+btnSettings.addEventListener("click", openSettings);
+btnPauseSettings.addEventListener("click", openSettings);
+btnCloseSettings.addEventListener("click", () => {
+    settingsModal.classList.add("hidden");
+    applySettings();
+    saveSettings();
+});
+
+settingVolume.addEventListener("input", () => {
+    settings.volume = Number(settingVolume.value) / 100;
+    if (settings.muted && settings.volume > 0) {
+        settings.muted = false;
+        settingMute.checked = false;
+    }
+    applySettings();
+});
+settingMute.addEventListener("change", () => {
+    settings.muted = settingMute.checked;
+    applySettings();
+});
+settingShake.addEventListener("change", () => {
+    settings.screenShake = settingShake.checked;
+});
+settingRoundTime.addEventListener("change", () => {
+    settings.roundTime = Number(settingRoundTime.value);
+});
+settingDifficulty.addEventListener("change", () => {
+    settings.difficulty = settingDifficulty.value;
+});
+
+btnChangeChar.addEventListener("click", openCharSelect);
+
+function openCharSelect() {
+    pauseMenu.classList.add("hidden");
+    isPaused = false;
+    inMainMenu = false;
+    selectingPlayer = 1;
+    charSelectTitle.textContent = "PLAYER 1: SELECT CHARACTER";
+    charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
+    charSelectMenu.classList.remove("hidden");
+    initPreviews();
+}
 
 function selectChar(className) {
     if (selectingPlayer === 1) {
@@ -1396,7 +1503,7 @@ function updateEnemyAI() {
     enemy.isMoving = false;
     const isGrounded = enemy.y <= 0;
     const distance = getDistance(player, enemy);
-    const isEasyMode = gameMode === "1P";
+    const isEasyMode = settings.difficulty === "easy";
 
     // AI Blocking Reaction - easier in 1P
     const blockChance = isEasyMode ? 0.008 : 0.015;
@@ -2053,7 +2160,7 @@ function startNextRound() {
     hitStopFrames = 0;
     screenShake = 0;
     roundOver = false;
-    roundTimer = 99;
+    roundTimer = settings.roundTime;
 
     updateHealthBars();
     startRoundTimer();
@@ -2776,7 +2883,9 @@ function render() {
     ctx.clearRect(0, 0, arenaWidth, arenaHeight);
     ctx.save();
     if (screenShake > 0) {
-        ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+        if (settings.screenShake) {
+            ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+        }
         screenShake *= 0.78;
         if (screenShake < 0.4) screenShake = 0;
     }
@@ -2968,7 +3077,7 @@ function restartGame() {
     hitStopFrames = 0;
     screenShake = 0;
     roundOver = false;
-    roundTimer = 99;
+    roundTimer = settings.roundTime;
     koSlowMo = 0;
     koSlowMoTarget = null;
     clearStatus();
@@ -2984,5 +3093,7 @@ function restartGame() {
 }
 
 // Start Loops
+applySettings();
+syncSettingsUI();
 restartGame();
 gameLoop();
