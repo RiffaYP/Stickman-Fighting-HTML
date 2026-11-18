@@ -266,6 +266,17 @@ function initPreviews() {
         applyClassStats(dummy, className);
         previewCanvases.push({ ctx: pctx, char: dummy, w, h });
     });
+}
+
+function stopPreviews() {
+    if (previewAnimRAF) {
+        cancelAnimationFrame(previewAnimRAF);
+        previewAnimRAF = null;
+    }
+}
+
+function startPreviews() {
+    if (!previewCanvases.length || previewAnimRAF) return;
     let t = 0;
     function loop() {
         t += 0.06;
@@ -275,6 +286,17 @@ function initPreviews() {
         previewAnimRAF = requestAnimationFrame(loop);
     }
     loop();
+}
+
+function showCharSelect() {
+    charSelectMenu.classList.remove("hidden");
+    initPreviews();
+    startPreviews();
+}
+
+function hideCharSelect() {
+    charSelectMenu.classList.add("hidden");
+    stopPreviews();
 }
 
 // Settings (persisted)
@@ -1320,8 +1342,7 @@ btnStart1P.addEventListener("click", function () {
     selectingPlayer = 1;
     charSelectTitle.textContent = "PLAYER 1: SELECT CHARACTER";
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
-    charSelectMenu.classList.remove("hidden");
-    initPreviews();
+    showCharSelect();
     resetNavFocus(activeNavLayer());
 });
 
@@ -1331,8 +1352,7 @@ btnStart2P.addEventListener("click", function () {
     selectingPlayer = 1;
     charSelectTitle.textContent = "PLAYER 1: SELECT CHARACTER";
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
-    charSelectMenu.classList.remove("hidden");
-    initPreviews();
+    showCharSelect();
     resetNavFocus(activeNavLayer());
 });
 
@@ -1404,7 +1424,7 @@ document.getElementById("cardStageSunset").addEventListener("click", () => selec
 
 // (Card Enter/Space activation handled globally by handleMenuInput.)
 btnBackToMenu.addEventListener("click", () => {
-    charSelectMenu.classList.add("hidden");
+    hideCharSelect();
     mainMenu.classList.remove("hidden");
     inMainMenu = true;
     refreshNav();
@@ -1465,8 +1485,7 @@ function openCharSelect() {
     selectingPlayer = 1;
     charSelectTitle.textContent = "PLAYER 1: SELECT CHARACTER";
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
-    charSelectMenu.classList.remove("hidden");
-    initPreviews();
+    showCharSelect();
     resetNavFocus(activeNavLayer());
 }
 
@@ -1474,7 +1493,7 @@ function selectChar(className) {
     if (selectingPlayer === 1) {
         selectedPlayerClass = className;
         if (gameMode === "1P") {
-            charSelectMenu.classList.add("hidden");
+            hideCharSelect();
             inMainMenu = false;
             initTouchControls();
             restartGame();
@@ -1488,7 +1507,7 @@ function selectChar(className) {
         }
     } else if (selectingPlayer === 2) {
         selectedEnemyClass = className;
-        charSelectMenu.classList.add("hidden");
+        hideCharSelect();
         inMainMenu = false;
         initTouchControls();
         restartGame();
