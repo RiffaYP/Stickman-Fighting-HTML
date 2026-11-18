@@ -276,6 +276,23 @@ h1 {
     display: none !important;
 }
 
+/* Keyboard/gamepad focus highlight for menu navigation */
+.kbd-active {
+    outline: 3px solid #facc15 !important;
+    outline-offset: 3px;
+    box-shadow: 0 0 18px rgba(250, 204, 21, 0.6) !important;
+    z-index: 5;
+}
+
+.btn.kbd-active {
+    transform: translateY(-2px);
+}
+
+.char-card.kbd-active,
+.stage-card.kbd-active {
+    border-color: #facc15 !important;
+}
+
 .menu-content {
     background: rgba(17, 24, 39, 0.7);
     border: 2px solid rgba(255, 255, 255, 0.1);

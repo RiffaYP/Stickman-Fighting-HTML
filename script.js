@@ -75,6 +75,130 @@ const settingRoundTime = document.getElementById("settingRoundTime");
 const settingDifficulty = document.getElementById("settingDifficulty");
 const btnChangeChar = document.getElementById("btnChangeChar");
 
+// ---------- Keyboard / Gamepad Menu Navigation (grid-aware) ----------
+// Each overlay defines its focusable items. Focus is tracked by our own
+// .kbd-active class so we can highlight non-native elements (div cards) too.
+const NAV_LAYERS = [
+    { el: () => howToPlayModal, selector: "#howToPlayModal button" },
+    { el: () => settingsModal, selector: "#settingsModal button, #settingsModal input, #settingsModal select" },
+    { el: () => gameOverMenu, selector: "#gameOverMenu button" },
+    { el: () => pauseMenu, selector: "#pauseMenu button" },
+    { el: () => charSelectMenu, selector: "#charSelectMenu .char-card, #charSelectMenu .stage-card, #btnBackToMenu" },
+    { el: () => mainMenu, selector: "#mainMenu button" },
+];
+
+function isOverlayOpen(el) {
+    return el && !el.classList.contains("hidden");
+}
+
+// Returns the top-most open overlay layer (settings has highest priority).
+function activeNavLayer() {
+    for (const layer of NAV_LAYERS) {
+        const el = layer.el();
+        if (isOverlayOpen(el)) return layer;
+    }
+    return null;
+}
+
+function getNavItems(layer) {
+    const root = layer.el();
+    if (!root) return [];
+    // Root overlay is already known-open; exclude items hidden inside sub-.hidden.
+    return Array.from(root.querySelectorAll(layer.selector)).filter(el => {
+        if (el.closest(".hidden")) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+    });
+}
+
+let kbdFocusEl = null;
+
+function getCenter(el) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, rect: r };
+}
+
+// Grid-aware directional move: pick the nearest item in the pressed direction
+// using center-distance scoring biased toward the axis of travel.
+function moveFocus(items, dir) {
+    if (!items.length) return null;
+    const cur = kbdFocusEl && items.includes(kbdFocusEl) ? kbdFocusEl : null;
+    if (!cur) return items[0];
+
+    const c = getCenter(cur);
+    let best = null;
+    let bestScore = Infinity;
+    for (const el of items) {
+        if (el === cur) continue;
+        const t = getCenter(el);
+        const dx = t.x - c.x;
+        const dy = t.y - c.y;
+        let primary, secondary;
+        if (dir === "left") { if (dx >= -1) continue; primary = -dx; secondary = Math.abs(dy); }
+        else if (dir === "right") { if (dx <= 1) continue; primary = dx; secondary = Math.abs(dy); }
+        else if (dir === "up") { if (dy >= -1) continue; primary = -dy; secondary = Math.abs(dx); }
+        else { if (dy <= 1) continue; primary = dy; secondary = Math.abs(dx); }
+        const score = primary + secondary * 2;
+        if (score < bestScore) { bestScore = score; best = el; }
+    }
+    return best || cur;
+}
+
+function setKbdFocus(el) {
+    if (kbdFocusEl && kbdFocusEl !== el) kbdFocusEl.classList.remove("kbd-active");
+    kbdFocusEl = el;
+    if (el) el.classList.add("kbd-active");
+}
+
+function resetNavFocus(layer) {
+    if (!layer) { setKbdFocus(null); return; }
+    const items = getNavItems(layer);
+    setKbdFocus(items[0] || null);
+}
+
+// Focus the first item when an overlay is opened via refreshNav() calls.
+function refreshNav() {
+    const layer = activeNavLayer();
+    if (!layer) { setKbdFocus(null); return; }
+    const items = getNavItems(layer);
+    if (!kbdFocusEl || !items.includes(kbdFocusEl)) {
+        setKbdFocus(items[0] || null);
+    }
+}
+
+function activateFocused() {
+    if (!kbdFocusEl) return false;
+    kbdFocusEl.click();
+    return true;
+}
+
+// Handle directional / confirm input from keyboard or gamepad.
+// Returns true if the input was consumed by menu navigation.
+function handleMenuInput(dir) {
+    const layer = activeNavLayer();
+    if (!layer) return false;
+    const items = getNavItems(layer);
+    if (!items.length) return false;
+    if (dir === "confirm") {
+        if (!kbdFocusEl || !items.includes(kbdFocusEl)) setKbdFocus(items[0]);
+        activateFocused();
+        return true;
+    }
+    if (dir === "back") {
+        // Context-aware back/Esc per overlay
+        if (layer.el() === settingsModal) btnCloseSettings.click();
+        else if (layer.el() === howToPlayModal) btnCloseModal.click();
+        else if (layer.el() === pauseMenu) btnResume.click();       // Esc resumes, doesn't quit
+        else if (layer.el() === charSelectMenu) btnBackToMenu.click();
+        else if (layer.el() === gameOverMenu) btnGameOverMainMenu.click();
+        // main menu: no back action
+        return true;
+    }
+    const next = moveFocus(items, dir);
+    if (next) setKbdFocus(next);
+    return true;
+}
+
 const keys = {};
 
 const groundHeight = 45;
@@ -254,12 +378,13 @@ const KEY_MAP = {
 };
 
 const GAMEPAD_MAP = {
-    left: { axis: 0, threshold: -0.3 },
-    right: { axis: 0, threshold: 0.3 },
-    up: { axis: 1, threshold: -0.3 },
-    down: { axis: 1, threshold: 0.3 },
+    left: { axis: 0, threshold: -0.3, button: 14 },  // axis + D-pad left
+    right: { axis: 0, threshold: 0.3, button: 15 },  // axis + D-pad right
+    up: { axis: 1, threshold: -0.3, button: 12 },    // axis + D-pad up
+    down: { axis: 1, threshold: 0.3, button: 13 },   // axis + D-pad down
     attack: { button: 0 },      // A / Cross
     special: { button: 1 },     // B / Circle
+    back: { button: 1 },        // B / Circle (menu back)
     block: { button: 6 },       // LB / L1
     pause: { button: 9 },       // Start / Options
     restart: { button: 8 }      // Select / Share
@@ -281,11 +406,13 @@ function getGamepadInput(playerIndex) {
     const prev = gamepadPrevState[playerIndex] || {};
     const curr = {};
 
-    // Axes
+    // Axes + D-pad buttons
     ['left', 'right', 'up', 'down'].forEach(dir => {
         const map = GAMEPAD_MAP[dir];
         const val = gp.axes[map.axis] || 0;
-        curr[dir] = val * (dir === 'left' || dir === 'up' ? -1 : 1) > Math.abs(map.threshold);
+        const axisActive = val * (dir === 'left' || dir === 'up' ? -1 : 1) > Math.abs(map.threshold);
+        const btnActive = gp.buttons[map.button]?.pressed || false;
+        curr[dir] = axisActive || btnActive;
     });
 
     // Buttons
@@ -297,6 +424,48 @@ function getGamepadInput(playerIndex) {
 
     gamepadPrevState[playerIndex] = curr;
     return curr;
+}
+
+// Gamepad menu navigation: edge-detected direction + confirm/back, shared
+// across overlays. Uses its own prev-state so it doesn't clash with gameplay.
+let gpMenuPrev = {};
+
+function pollGamepadMenu() {
+    const gp = navigator.getGamepads()[0];
+
+    // Start/Options toggles pause while a match is running (and no other overlay).
+    if (gp && gameRunning && !isCountingDown && !roundOver) {
+        const startPressed = gp.buttons[9]?.pressed;
+        const layer = activeNavLayer();
+        const onlyPauseOpen = layer && layer.el() === pauseMenu;
+        if (startPressed && !gpMenuPrev.start && (!layer || onlyPauseOpen)) {
+            togglePause();
+            gpMenuPrev.start = true;
+            return;
+        }
+        gpMenuPrev.start = startPressed;
+    }
+
+    if (!activeNavLayer()) { gpMenuPrev = { start: gpMenuPrev.start }; return; }
+    if (!gp) return;
+
+    const dirs = {
+        left: (gp.buttons[14]?.pressed) || (gp.axes[0] < -0.5),
+        right: (gp.buttons[15]?.pressed) || (gp.axes[0] > 0.5),
+        up: (gp.buttons[12]?.pressed) || (gp.axes[1] < -0.5),
+        down: (gp.buttons[13]?.pressed) || (gp.axes[1] > 0.5),
+        confirm: gp.buttons[0]?.pressed,   // A
+        back: gp.buttons[1]?.pressed       // B
+    };
+
+    for (const k of Object.keys(dirs)) {
+        const pressed = dirs[k];
+        const wasPressed = gpMenuPrev[k];
+        if (pressed && !wasPressed) {
+            handleMenuInput(k);
+        }
+        gpMenuPrev[k] = pressed;
+    }
 }
 
 // Touch Controls
@@ -932,8 +1101,10 @@ function togglePause() {
     if (isPaused) {
         pauseMenu.classList.remove("hidden");
         clearKeys();
+        refreshNav();
     } else {
         pauseMenu.classList.add("hidden");
+        setKbdFocus(null);
     }
 }
 
@@ -1029,10 +1200,36 @@ function startCountdown(callback, roundTitle) {
 
 // Keyboard events
 document.addEventListener("keydown", function (event) {
-    if (inMainMenu) return;
-
     const key = event.key.toLowerCase();
     const code = event.code;
+
+    // Menu navigation takes priority whenever an overlay (or the main menu) is open.
+    const navLayer = activeNavLayer();
+    if (navLayer) {
+        // In the pause menu, P still toggles pause (resume).
+        if (navLayer.el() === pauseMenu && key === "p") {
+            event.preventDefault();
+            togglePause();
+            return;
+        }
+        let dir = null;
+        if (code === "ArrowLeft") dir = "left";
+        else if (code === "ArrowRight") dir = "right";
+        else if (code === "ArrowUp") dir = "up";
+        else if (code === "ArrowDown") dir = "down";
+        else if (key === "enter" || key === " ") dir = "confirm";
+        else if (key === "escape") dir = "back";
+
+        if (dir) {
+            event.preventDefault();
+            handleMenuInput(dir);
+            return;
+        }
+        // Don't let gameplay keys leak while a menu is open.
+        return;
+    }
+
+    if (inMainMenu) return;
 
     if (key === "p" || key === "escape") {
         event.preventDefault();
@@ -1125,6 +1322,7 @@ btnStart1P.addEventListener("click", function () {
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
     charSelectMenu.classList.remove("hidden");
     initPreviews();
+    resetNavFocus(activeNavLayer());
 });
 
 btnStart2P.addEventListener("click", function () {
@@ -1135,14 +1333,17 @@ btnStart2P.addEventListener("click", function () {
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
     charSelectMenu.classList.remove("hidden");
     initPreviews();
+    resetNavFocus(activeNavLayer());
 });
 
 btnHowToPlay.addEventListener("click", function () {
     howToPlayModal.classList.remove("hidden");
+    refreshNav();
 });
 
 btnCloseModal.addEventListener("click", function () {
     howToPlayModal.classList.add("hidden");
+    refreshNav();
 });
 
 btnResume.addEventListener("click", function () {
@@ -1159,6 +1360,7 @@ btnRestart.addEventListener("click", function () {
     isPaused = false;
     pauseMenu.classList.add("hidden");
     restartGame();
+    setKbdFocus(null);
 });
 
 btnMainMenu.addEventListener("click", function () {
@@ -1168,11 +1370,13 @@ btnMainMenu.addEventListener("click", function () {
     mainMenu.classList.remove("hidden");
     document.getElementById('touchControls').classList.add('hidden');
     restartGame();
+    refreshNav();
 });
 
 btnGameOverRestart.addEventListener("click", function () {
     gameOverMenu.classList.add("hidden");
     restartGame();
+    setKbdFocus(null);
 });
 
 btnGameOverMainMenu.addEventListener("click", function () {
@@ -1181,6 +1385,7 @@ btnGameOverMainMenu.addEventListener("click", function () {
     mainMenu.classList.remove("hidden");
     document.getElementById('touchControls').classList.add('hidden');
     restartGame();
+    refreshNav();
 });
 
 // Character Selection Cards
@@ -1197,20 +1402,12 @@ document.getElementById("cardStageDojo").addEventListener("click", () => selectS
 document.getElementById("cardStageVoid").addEventListener("click", () => selectStage("void"));
 document.getElementById("cardStageSunset").addEventListener("click", () => selectStage("sunset"));
 
-// Keyboard activation for role="button" cards (Enter / Space)
-document.querySelectorAll('.char-card[role="button"], .stage-card[role="button"]').forEach(card => {
-    card.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            card.click();
-        }
-    });
-});
-
+// (Card Enter/Space activation handled globally by handleMenuInput.)
 btnBackToMenu.addEventListener("click", () => {
     charSelectMenu.classList.add("hidden");
     mainMenu.classList.remove("hidden");
     inMainMenu = true;
+    refreshNav();
 });
 
 // Settings wiring
@@ -1225,6 +1422,7 @@ function syncSettingsUI() {
 function openSettings() {
     syncSettingsUI();
     settingsModal.classList.remove("hidden");
+    refreshNav();
 }
 
 btnSettings.addEventListener("click", openSettings);
@@ -1233,6 +1431,7 @@ btnCloseSettings.addEventListener("click", () => {
     settingsModal.classList.add("hidden");
     applySettings();
     saveSettings();
+    refreshNav();
 });
 
 settingVolume.addEventListener("input", () => {
@@ -1268,6 +1467,7 @@ function openCharSelect() {
     charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 1";
     charSelectMenu.classList.remove("hidden");
     initPreviews();
+    resetNavFocus(activeNavLayer());
 }
 
 function selectChar(className) {
@@ -1278,11 +1478,13 @@ function selectChar(className) {
             inMainMenu = false;
             initTouchControls();
             restartGame();
+            setKbdFocus(null);
         } else {
             // Mode 2P: Lanjut ke Player 2
             selectingPlayer = 2;
             charSelectTitle.textContent = "PLAYER 2: SELECT CHARACTER";
             charSelectSubtitle.textContent = "Pilih Kelas Pertarungan Player 2";
+            resetNavFocus(activeNavLayer());
         }
     } else if (selectingPlayer === 2) {
         selectedEnemyClass = className;
@@ -1290,6 +1492,7 @@ function selectChar(className) {
         inMainMenu = false;
         initTouchControls();
         restartGame();
+        setKbdFocus(null);
     }
 }
 
@@ -2062,6 +2265,7 @@ function showGameOver(message) {
     scheduleTimeout(() => {
         gameOverMenu.classList.remove("hidden");
         clearKeys();
+        refreshNav();
     }, 1000);
 }
 
@@ -2944,9 +3148,10 @@ function render() {
 function gameLoop() {
     // Poll gamepads
     pollGamepads();
+    pollGamepadMenu();
 
-    // Update keys from gamepad input
-    if (!inMainMenu && !isPaused && !isCountingDown) {
+    // Update keys from gamepad input (skip while any menu overlay is open)
+    if (!inMainMenu && !isPaused && !isCountingDown && !activeNavLayer()) {
         const gp0 = getGamepadInput(0);
         const gp1 = getGamepadInput(1);
 
@@ -2958,7 +3163,6 @@ function gameLoop() {
             if (gp0.down) keys['s'] = true; else keys['s'] = false;
             if (gp0.attack) { keys['j'] = true; setTimeout(() => keys['j'] = false, 0); }
             if (gp0.special) { keys['k'] = true; setTimeout(() => keys['k'] = false, 0); }
-            if (gp0.pause) { togglePause(); }
             if (gp0.restart) { restartGame(); }
         }
 
@@ -2970,7 +3174,6 @@ function gameLoop() {
             if (gp1.down) keys['arrowdown'] = true; else keys['arrowdown'] = false;
             if (gp1.attack) { keys['0'] = true; setTimeout(() => keys['0'] = false, 0); }
             if (gp1.special) { keys['1'] = true; setTimeout(() => keys['1'] = false, 0); }
-            if (gp1.pause) { togglePause(); }
             if (gp1.restart) { restartGame(); }
         }
     }
@@ -3107,4 +3310,5 @@ function restartGame() {
 applySettings();
 syncSettingsUI();
 restartGame();
+refreshNav();
 gameLoop();
